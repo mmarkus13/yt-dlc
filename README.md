@@ -22,7 +22,7 @@ chmod +x installer.sh && \
 > then before first usage don't forget to reload your shell: \
 `source ~/.bashrc`
 
-> *note: bash commands works under [Windows (10 & 11) WSL](https://learn.microsoft.com/en-us/windows/wsl/install) as well!*
+> *#note: bash commands works under [Windows (10 & 11) WSL](https://learn.microsoft.com/en-us/windows/wsl/install) as well!*
 ---
 
 ## ✨ Features
@@ -88,7 +88,8 @@ Deno is the recommended JavaScript runtime for yt-dlp's YouTube support.
 
 ---
 
-# 🚀 Quick Setup
+# 🚀 Detailed Setup
+> #note: this is for transparency; if you'd like a quick & easy install head back to the [top](https://github.com/mmarkus13/yt-dlc/tree/main#user-content-install-everything-with-a-single-command) of the page...
 
 These instructions target Linux, macOS, and WSL.
 
