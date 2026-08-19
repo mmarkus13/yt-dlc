@@ -22,14 +22,29 @@ chmod +x installer.sh && \
 
 The installer will:
 
+- Create `~/scripts`
+- Add `~/scripts` to your shell `PATH`
 - Install Deno if it is not already installed
-- Download the latest standalone yt-dlp binary
-- Check for FFmpeg and ask whether you want to install it if it is missing
-- Download the `yt` and `ytmp3` wrapper scripts
-- Add `~/scripts` to your `PATH`
-- Configure the current shell session
+- Download the latest official standalone yt-dlp binary
+- Check for FFmpeg
+- Ask whether FFmpeg should be installed if it is missing
+- Download the version-controlled `yt` and `ytmp3` wrapper scripts
+- Configure the appropriate shell startup file
+- Verify the installed components
 
-After installation, you can run `yt` and `ytmp3` from any directory:
+After installation, **reload your current shell once**:
+
+```bash
+source ~/.bashrc
+```
+
+If you use Zsh instead:
+
+```bash
+source ~/.zshrc
+```
+
+You can then run `yt` and `ytmp3` from any directory:
 
 ```bash
 yt "https://youtu.be/VIDEO_ID"
@@ -39,7 +54,7 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 > 💡 **WSL:** The same Bash commands work on Windows 10 and 11 through [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install).
 
 > 💡 **SteamOS:** This setup can also be used on SteamOS. \
-> The manual installation may require additional steps depending on your SteamOS version and package-management configuration.
+> The installer detects SteamOS and handles FFmpeg installation separately because SteamOS uses a read-only system filesystem by default.
 
 ---
 
@@ -53,7 +68,9 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 | **Batch Downloads** | Download multiple individual URLs without creating a playlist |
 | **Batch Files** | Pass a text file containing multiple URLs directly to yt-dlp |
 | **Playlists** | Download individual videos or entire YouTube playlists |
-| **Resume Support** | Interrupted downloads can be resumed |
+| **Mixed Inputs** | Combine individual URLs, playlists, and yt-dlp options |
+| **Automatic Fallback** | Retries failed extraction using YouTube's `web` player client |
+| **Resume Support** | Interrupted downloads can be retried |
 | **Cross-Platform** | Designed for Linux, macOS, WSL, and SteamOS |
 | **Minimal Setup** | Uses the official standalone yt-dlp binary |
 | **Customizable** | Standard yt-dlp options can be passed through the wrappers |
@@ -91,33 +108,35 @@ The automated installer handles these dependencies where possible.
 
 ### Python
 
-For this project's **standalone-binary setup**, Python is **not required to run yt-dlp itself**.
+Python is **not required** for the normal installation described by this project.
 
-The official standalone yt-dlp binary includes what it needs to run independently of a system Python installation.
+This project uses the official standalone yt-dlp binary, which does not require a system Python installation.
 
-However, **Python 3.11 or newer is required if you choose to install yt-dlp through PyPI instead of using the standalone binary**.
+If you instead choose to install yt-dlp through PyPI, use **Python 3.11 or newer**.
 
-For a Python-based installation:
+For example:
 
 ```bash
 python3 --version
 ```
 
-Then install yt-dlp with:
+Then:
 
 ```bash
 python3 -m pip install -U "yt-dlp[default]"
 ```
 
-This installs the default dependencies required by the PyPI version.
+The `default` dependency group includes the appropriate `yt-dlp-ejs` package for the PyPI installation.
 
-> **Recommended for this project:** Use the official standalone yt-dlp binary installed by `installer.sh`. This avoids requiring Python solely for yt-dlp.
+> **Note:** Python 3.10 is not supported by this project's documented PyPI installation path. Use Python 3.11 or newer.
 
 ### Why Deno?
 
-yt-dlp uses an external JavaScript runtime to handle JavaScript challenges required for full YouTube extraction.
+yt-dlp uses an external JavaScript runtime to solve JavaScript challenges required for full YouTube extraction.
 
 Deno is the recommended JavaScript runtime for yt-dlp's YouTube support.
+
+The official standalone yt-dlp executables already contain the required EJS components, so this project does **not** separately install `yt-dlp-ejs`.
 
 ---
 
@@ -156,7 +175,7 @@ echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> "$HOME/.bashrc"
 source "$HOME/.bashrc"
 ```
 
-Verify the installation:
+Verify:
 
 ```bash
 deno --version
@@ -171,7 +190,7 @@ If you use Zsh instead of Bash, add the environment variables to `~/.zshrc` inst
 Download the official standalone yt-dlp binary:
 
 ```bash
-curl -L \
+curl -fsSL \
   "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
   -o "$HOME/scripts/yt-dlp"
 ```
@@ -225,17 +244,19 @@ ffmpeg -version
 
 ### SteamOS
 
-SteamOS is Arch Linux-based, but its system filesystem and package-management behavior can differ from a conventional Arch installation.
+SteamOS is Arch Linux-based, but its system filesystem and package-management behavior differ from a conventional Arch installation.
 
-If FFmpeg is already available:
+Check whether FFmpeg is already available:
 
 ```bash
 ffmpeg -version
 ```
 
-If it is missing, follow the current SteamOS-specific package-management guidance appropriate for your SteamOS version.
+If it is missing, SteamOS package installation may require temporarily disabling the read-only filesystem.
 
-The automated installer will detect whether FFmpeg is already available and, when possible, ask whether you want to install it.
+The installer handles this automatically when possible.
+
+> **Important:** Packages installed into the SteamOS system filesystem may be affected by future SteamOS updates. Keep this in mind when using system-level package installation.
 
 ---
 
@@ -248,7 +269,7 @@ yt
 ytmp3
 ```
 
-They are the single source of truth for the wrapper implementations.
+These files are the **single source of truth** for the wrapper implementations.
 
 ### Option A — Clone the Repository
 
@@ -275,7 +296,7 @@ chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
 
 ### Option B — Download the Wrapper Scripts Directly
 
-If you don't want to clone the repository, download the wrapper scripts directly:
+If you don't want to clone the repository:
 
 ```bash
 curl -fsSL \
@@ -377,6 +398,38 @@ ytmp3 \
 
 ---
 
+## Download URLs from a Text File
+
+For a larger batch, put one URL per line in a text file:
+
+```text
+https://youtu.be/VIDEO_ID_1
+https://youtu.be/VIDEO_ID_2
+https://youtu.be/VIDEO_ID_3
+```
+
+For example, save the file as:
+
+```text
+urls.txt
+```
+
+Then:
+
+```bash
+yt --batch-file urls.txt
+```
+
+Or:
+
+```bash
+ytmp3 --batch-file urls.txt
+```
+
+Comments and blank lines can be used in batch files where supported by yt-dlp.
+
+---
+
 ## Download into a Specific Directory
 
 Change directories before running the command:
@@ -399,9 +452,9 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 
 You don't need to create a YouTube playlist to download multiple items.
 
-The wrappers accept multiple URLs in a single command.
+The wrappers pass all additional arguments through to yt-dlp.
 
-## Download Multiple Videos
+## Multiple Individual Videos
 
 ```bash
 yt \
@@ -410,7 +463,7 @@ yt \
   "https://youtu.be/VIDEO_ID_3"
 ```
 
-## Download Multiple Songs as MP3
+## Multiple Songs as MP3
 
 ```bash
 ytmp3 \
@@ -419,47 +472,13 @@ ytmp3 \
   "https://youtu.be/MUSIC_ID_3"
 ```
 
-The URLs can be individual videos from completely different playlists or channels.
+The URLs can belong to completely different playlists or channels.
 
 No YouTube playlist needs to be created.
 
 ---
 
-## Download URLs from a Text File
-
-For a larger batch, put one URL per line in a text file:
-
-```text
-https://youtu.be/VIDEO_ID_1
-https://youtu.be/VIDEO_ID_2
-https://youtu.be/VIDEO_ID_3
-```
-
-For example, save the file as:
-
-```text
-urls.txt
-```
-
-Then download all videos:
-
-```bash
-yt --batch-file urls.txt
-```
-
-Or extract them all as MP3:
-
-```bash
-ytmp3 --batch-file urls.txt
-```
-
-Comments and blank lines can be used in the batch file where supported by yt-dlp.
-
----
-
 ## Download an Entire Playlist
-
-You can still download an entire YouTube playlist normally:
 
 ```bash
 yt "https://www.youtube.com/playlist?list=PLAYLIST_ID"
@@ -483,7 +502,7 @@ yt --ignore-errors \
 
 ## Mix Individual URLs and Playlists
 
-Because the wrappers pass standard yt-dlp arguments through, you can also provide multiple URLs and playlists in the same command:
+You can combine individual URLs and playlists:
 
 ```bash
 yt \
@@ -491,37 +510,39 @@ yt \
   "https://www.youtube.com/playlist?list=PLAYLIST_ID"
 ```
 
-> **Tip:** For a large or frequently reused collection, a batch file is usually easier to maintain than a very long command line.
+For a large collection, a batch file is usually easier to maintain.
+
+---
+
+# 🔄 Automatic Extraction Fallback
+
+The wrappers first allow yt-dlp to use its normal/default YouTube client selection.
+
+If extraction fails, the wrapper automatically retries using:
+
+```bash
+--extractor-args "youtube:player_client=web"
+```
+
+This is intentional.
+
+YouTube's client behavior changes over time, and forcing `web` for every download can unnecessarily override yt-dlp's normal client selection.
+
+The fallback gives the downloader a second extraction configuration without permanently forcing `web`.
+
+You may see:
+
+```text
+Normal extraction failed; retrying with YouTube web client...
+```
+
+when the fallback is triggered.
+
+> The fallback cannot fix every failure. Authentication requirements, unavailable videos, network errors, regional restrictions, or other failures may still prevent a download.
 
 ---
 
 # ⚙️ Advanced Options
-
-### Download URLs from a File
-
-Create a text file containing one URL per line:
-
-```text
-https://youtu.be/VIDEO_ID_1
-https://youtu.be/VIDEO_ID_2
-https://youtu.be/VIDEO_ID_3
-```
-
-Then:
-
-```bash
-yt --batch-file urls.txt
-```
-
-For MP3 extraction:
-
-```bash
-ytmp3 --batch-file urls.txt
-```
-
-This is useful when downloading a large collection of individual videos or songs without creating a YouTube playlist.
-
----
 
 The wrappers pass standard yt-dlp options through, so normal yt-dlp arguments can be used.
 
@@ -604,10 +625,10 @@ echo "$PATH"
 You should normally see:
 
 ```text
-/home/yourname/.deno
+/home/yourname/.deno/bin
 ```
 
-in the Deno installation path.
+in the PATH.
 
 If you use Zsh:
 
@@ -637,11 +658,13 @@ Verify yt-dlp:
 yt-dlp --version
 ```
 
-Also check that your yt-dlp binary is the one you expect:
+Also check which binary is being used:
 
 ```bash
 which yt-dlp
 ```
+
+The official standalone yt-dlp binary used by this project already contains the required EJS components.
 
 ---
 
@@ -677,21 +700,16 @@ First update yt-dlp:
 yt-dlp -U
 ```
 
-Then check Deno:
+Then check:
 
 ```bash
 deno --version
-```
-
-And FFmpeg:
-
-```bash
 ffmpeg -version
 ```
 
-Avoid permanently hard-coding a specific YouTube `player_client` unless there is a current, reproducible reason to do so.
+The wrapper will automatically retry using the YouTube `web` player client after a normal extraction failure.
 
-YouTube's available clients and extraction requirements change over time, and yt-dlp regularly updates its YouTube extractor.
+Avoid permanently adding additional client workarounds unless there is a current, reproducible reason to do so.
 
 ---
 
@@ -743,15 +761,48 @@ Incorrect:
 
 ## Python Version Warnings
 
-If you are using the standalone yt-dlp binary from this README, Python is not required.
+Python is not required when using the standalone yt-dlp binary installed by this project.
 
-If you installed yt-dlp through Python/pip, Python **3.11 or newer** is required for this setup.
+If you choose the PyPI/Python installation method, use Python **3.11 or newer**.
 
-Check your version:
+Check:
 
 ```bash
 python3 --version
 ```
+
+Then:
+
+```bash
+python3 -m pip install -U "yt-dlp[default]"
+```
+
+---
+
+## FFmpeg Is Missing
+
+Check:
+
+```bash
+ffmpeg -version
+```
+
+If FFmpeg is unavailable, video merging and MP3 extraction may fail.
+
+On Debian/Ubuntu/WSL:
+
+```bash
+sudo apt update
+sudo apt install -y ffmpeg
+```
+
+On macOS with Homebrew:
+
+```bash
+brew install ffmpeg
+```
+
+On SteamOS, see the [SteamOS Notes](#-steamos-notes) section.
 
 ---
 
@@ -824,11 +875,27 @@ Or:
 "$HOME/scripts/yt-dlp" -U
 ```
 
-Keeping yt-dlp updated is particularly important because YouTube changes frequently and yt-dlp releases regularly contain extractor fixes.
+Keeping yt-dlp updated is particularly important because YouTube changes frequently.
+
+---
+
+## Update Deno
+
+```bash
+deno upgrade
+```
+
+Verify:
+
+```bash
+deno --version
+```
+
+---
 
 ## Update the Wrapper Scripts
 
-If you installed them manually from the repository, you can download the latest versions:
+If you installed them manually from the repository:
 
 ```bash
 curl -fsSL \
@@ -849,7 +916,7 @@ cd "$HOME/yt-dlc"
 git pull
 ```
 
-Then copy the updated wrappers:
+Then:
 
 ```bash
 cp yt ytmp3 "$HOME/scripts/"
@@ -889,7 +956,7 @@ becomes:
 
 This setup can also be used on SteamOS.
 
-SteamOS is Arch Linux-based, but its system filesystem and package-management behavior can differ from a conventional Arch installation.
+SteamOS is Arch Linux-based, but it is not simply a conventional Arch installation. Its system filesystem is normally read-only.
 
 The standalone yt-dlp binary does not require Python.
 
@@ -903,9 +970,12 @@ Check whether FFmpeg is already available:
 ffmpeg -version
 ```
 
-If it is missing, follow the current SteamOS-specific instructions for installing packages appropriate to your SteamOS version.
+If it is missing, the installer can ask whether you want it installed.
 
-> SteamOS updates may reset or alter parts of the system environment. Keeping user-installed tools under `$HOME` is generally preferable where practical.
+The installer handles SteamOS separately and temporarily disables the read-only filesystem when package installation is required.
+
+> **Important:** System packages installed directly into the SteamOS root filesystem may be affected by future SteamOS updates.\
+> User files under `$HOME` are preferable for persistent project files and scripts.
 
 ---
 
@@ -959,30 +1029,31 @@ yt \
 
 ## Change the Default Output Directory
 
-The wrappers normally save downloads according to yt-dlp's default output behavior.
-
-If you want a fixed output directory, edit the `yt` or `ytmp3` wrapper and modify its yt-dlp output template.
+By default, downloads are saved in the current working directory.
 
 For example:
 
 ```bash
--o "$HOME/Downloads/youtube/%(title)s.%(ext)s"
+cd "$HOME/Downloads"
+yt "https://youtu.be/VIDEO_ID"
 ```
 
-Create the directory first:
-
-```bash
-mkdir -p "$HOME/Downloads/youtube"
-```
+You can also configure a permanent output directory through an environment variable.
 
 ---
 
-## Use an Environment Variable
+## Use `YOUTUBE_DOWNLOAD_PATH`
 
 Add this to `~/.bashrc`:
 
 ```bash
-export YOUTUBE_DL_OUTPUT="$HOME/Downloads/youtube"
+export YOUTUBE_DOWNLOAD_PATH="$HOME/Downloads/youtube"
+```
+
+Create the directory:
+
+```bash
+mkdir -p "$HOME/Downloads/youtube"
 ```
 
 Reload:
@@ -991,19 +1062,14 @@ Reload:
 source "$HOME/.bashrc"
 ```
 
-Then the wrapper can use:
+The wrappers will then use that directory automatically:
 
 ```bash
-OUTPUT_DIR="${YOUTUBE_DL_OUTPUT:-$PWD}"
+yt "https://youtu.be/VIDEO_ID"
+ytmp3 "https://youtu.be/MUSIC_ID"
 ```
 
-and:
-
-```bash
--o "$OUTPUT_DIR/%(title)s.%(ext)s"
-```
-
-This lets you change the destination without editing the wrapper.
+The default remains the current working directory if `YOUTUBE_DOWNLOAD_PATH` is not set.
 
 ---
 
@@ -1014,6 +1080,8 @@ This project consists primarily of wrapper scripts around third-party software.
 - **[yt-dlp](https://github.com/yt-dlp/yt-dlp)** — Unlicense
 - **[Deno](https://deno.com/)** — MIT
 - **[yt-dlp-ejs](https://github.com/yt-dlp/ejs)** — MIT
+
+The project does not separately install `yt-dlp-ejs` when using the official standalone yt-dlp binary.
 
 See the respective upstream projects for their complete license information.
 
@@ -1067,6 +1135,9 @@ Verify that the installed commands are available:
 ```bash
 which yt
 which ytmp3
+which yt-dlp
+which deno
+which ffmpeg
 ```
 
 Then test the video wrapper:
@@ -1081,6 +1152,20 @@ And the audio wrapper:
 ytmp3 "https://youtu.be/MUSIC_ID"
 ```
 
+Test multiple URLs:
+
+```bash
+yt \
+  "https://youtu.be/VIDEO_ID_1" \
+  "https://youtu.be/VIDEO_ID_2"
+```
+
+Test a batch file:
+
+```bash
+yt --batch-file urls.txt
+```
+
 ---
 
 # 📌 Important Notes
@@ -1089,10 +1174,12 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 - Keep Deno updated and use a currently supported version.
 - FFmpeg is required for many video/audio processing operations.
 - The official standalone yt-dlp binary does not require Python.
-- Python **3.11 or newer** is required if you choose the PyPI/Python installation method.
+- Python **3.11 or newer** is recommended for the optional PyPI installation path used by this project.
+- Python 3.10 is not used or required by the normal installation.
 - A separate `pip install yt-dlp-ejs` is not required for the standalone-binary setup.
 - The `yt` and `ytmp3` wrapper scripts are maintained as files in this repository.
 - The installer downloads the repository versions of `yt` and `ytmp3`, avoiding duplicated wrapper implementations.
+- The wrappers first use yt-dlp's normal client selection and retry with `player_client=web` when extraction fails.
 - Avoid relying on permanently hard-coded YouTube client workarounds.
 - Only download content you have the right to download and use.
 
@@ -1101,4 +1188,3 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 **Happy downloading! 🎵**
 
 *Last tested: August 2026 · yt-dlp `2026.07.04` · Deno `2.9.5`*
-````
