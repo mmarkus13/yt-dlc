@@ -8,6 +8,12 @@ SCRIPT_DIR="$HOME/scripts"
 echo "🎵 YouTube Downloader CLI Installer"
 echo "==================================="
 
+# Step 0: Add ~/scripts to PATH if it isn't already there
+if [[ ":$PATH:" != *":$HOME/scripts:"* ]]; then
+    echo 'export PATH="$HOME/scripts:$PATH"' >> "$HOME/.bashrc"
+fi
+export PATH="$HOME/scripts:$PATH"
+
 # Step 1: Create scripts directory
 echo "[1/6] Creating $SCRIPT_DIR..."
 mkdir -p "$SCRIPT_DIR"
