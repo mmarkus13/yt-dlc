@@ -85,68 +85,19 @@ fi
 # Step 4: Create wrapper scripts
 # --------------------------------------------------
 
-echo "[4/5] Creating wrapper scripts..."
+echo "[4/5] Installing wrapper scripts..."
 
-cat > "$SCRIPT_DIR/yt" << 'EOF'
-#!/bin/bash
+curl -fsSL \
+  "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/yt" \
+  -o "$SCRIPT_DIR/yt"
 
-YTDL="$HOME/scripts/yt-dlp"
-
-if [[ ! -x "$YTDL" ]]; then
-    echo "Error: yt-dlp not found at $YTDL" >&2
-    exit 1
-fi
-
-if [[ -z "$1" ]]; then
-    read -r -p "Enter YouTube URL: " URL
-else
-    URL="$1"
-fi
-
-if [[ -z "$URL" ]]; then
-    echo "Error: No URL provided" >&2
-    exit 1
-fi
-
-exec "$YTDL" \
-    --js-runtimes deno \
-    -S "res,ext:mp4,m4a" \
-    --recode mp4 \
-    "$URL"
-EOF
-
-cat > "$SCRIPT_DIR/ytmp3" << 'EOF'
-#!/bin/bash
-
-YTDL="$HOME/scripts/yt-dlp"
-
-if [[ ! -x "$YTDL" ]]; then
-    echo "Error: yt-dlp not found at $YTDL" >&2
-    exit 1
-fi
-
-if [[ -z "$1" ]]; then
-    read -r -p "Enter YouTube URL: " URL
-else
-    URL="$1"
-fi
-
-if [[ -z "$URL" ]]; then
-    echo "Error: No URL provided" >&2
-    exit 1
-fi
-
-exec "$YTDL" \
-    --js-runtimes deno \
-    --extract-audio \
-    --audio-format mp3 \
-    --audio-quality 0 \
-    "$URL"
-EOF
+curl -fsSL \
+  "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/ytmp3" \
+  -o "$SCRIPT_DIR/ytmp3"
 
 chmod +x "$SCRIPT_DIR/yt" "$SCRIPT_DIR/ytmp3"
 
-echo "✓ Wrapper scripts created"
+echo "✓ Wrapper scripts installed"
 
 # --------------------------------------------------
 # Step 5: Configure PATH
