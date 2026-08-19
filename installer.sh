@@ -1,6 +1,6 @@
 #!/bin/bash
 # YouTube Downloader CLI - Automated Installer
-# Usage: mkdir -p ~/scripts && cd ~/scripts && wget -O installer.sh https://github.com/mmarkus13/yt-dlc/blob/main/installer.sh && chmod +x installer.sh && ./installer.sh
+# Usage: mkdir -p ~/scripts && cd ~/scripts && wget -O installer.sh https://raw.githubusercontent.com/mmarkus13/yt-dlc/refs/heads/main/installer.sh && chmod +x installer.sh && ./installer.sh
 
 set -e
 
