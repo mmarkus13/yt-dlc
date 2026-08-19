@@ -17,36 +17,74 @@ BASHRC="$HOME/.bashrc"
 echo "🎵 YouTube Downloader CLI Installer"
 echo "==================================="
 
+# --------------------------------------------------
 # Step 1: Create scripts directory
+# --------------------------------------------------
+
 echo "[1/5] Creating $SCRIPT_DIR..."
+
 mkdir -p "$SCRIPT_DIR"
 
+# --------------------------------------------------
 # Step 2: Install Deno
-echo "[2/5] Installing Deno..."
+# --------------------------------------------------
+
+echo "[2/5] Checking Deno..."
 
 if command -v deno >/dev/null 2>&1; then
+
     echo "✓ Deno already installed: $(deno --version | head -n1)"
+
 else
+
+    echo "Installing Deno..."
+
     curl -fsSL https://deno.land/install.sh | sh
 
     export DENO_INSTALL="$HOME/.deno"
     export PATH="$DENO_INSTALL/bin:$PATH"
 
+    # Add Deno configuration to .bashrc if not already present.
+    if ! grep -Fqx 'export DENO_INSTALL="$HOME/.deno"' "$BASHRC" 2>/dev/null; then
+        echo 'export DENO_INSTALL="$HOME/.deno"' >> "$BASHRC"
+    fi
+
+    if ! grep -Fqx 'export PATH="$DENO_INSTALL/bin:$PATH"' "$BASHRC" 2>/dev/null; then
+        echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> "$BASHRC"
+    fi
+
     echo "✓ Deno installed: $(deno --version | head -n1)"
+
 fi
 
+# --------------------------------------------------
 # Step 3: Install yt-dlp
+# --------------------------------------------------
+
 echo "[3/5] Installing yt-dlp..."
 
-curl -fsSL \
-    "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
-    -o "$SCRIPT_DIR/yt-dlp"
+YTDL="$SCRIPT_DIR/yt-dlp"
 
-chmod +x "$SCRIPT_DIR/yt-dlp"
+if [[ -x "$YTDL" ]]; then
 
-echo "✓ yt-dlp installed: $("$SCRIPT_DIR/yt-dlp" --version)"
+    echo "✓ yt-dlp already installed: $("$YTDL" --version)"
 
+else
+
+    curl -fsSL \
+        "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
+        -o "$YTDL"
+
+    chmod +x "$YTDL"
+
+    echo "✓ yt-dlp installed: $("$YTDL" --version)"
+
+fi
+
+# --------------------------------------------------
 # Step 4: Create wrapper scripts
+# --------------------------------------------------
+
 echo "[4/5] Creating wrapper scripts..."
 
 cat > "$SCRIPT_DIR/yt" << 'EOF'
@@ -108,34 +146,42 @@ EOF
 
 chmod +x "$SCRIPT_DIR/yt" "$SCRIPT_DIR/ytmp3"
 
-echo "✓ Scripts created:"
-echo "  $SCRIPT_DIR/yt"
-echo "  $SCRIPT_DIR/ytmp3"
+echo "✓ Wrapper scripts created"
 
+# --------------------------------------------------
 # Step 5: Configure PATH
+# --------------------------------------------------
+
 echo "[5/5] Configuring PATH..."
 
 if grep -Fqx 'export PATH="$HOME/scripts:$PATH"' "$BASHRC" 2>/dev/null; then
+
     echo "✓ ~/scripts is already in PATH"
+
 else
+
     echo 'export PATH="$HOME/scripts:$PATH"' >> "$BASHRC"
+
     echo "✓ Added ~/scripts to PATH"
+
 fi
 
-# Make the new PATH available to this installer process
+# Make ~/scripts available to this installer process.
 export PATH="$HOME/scripts:$PATH"
 
 echo ""
 echo "🎉 Installation complete!"
 echo ""
 echo "Installed:"
-echo "  yt-dlp: $("$SCRIPT_DIR/yt-dlp" --version)"
+echo "  yt-dlp: $("$YTDL" --version)"
 echo "  Deno:   $(deno --version | head -n1)"
 echo ""
-echo "To activate the new PATH in your current shell, run:"
+echo "Activate the new PATH in your current shell:"
+echo ""
 echo "  source ~/.bashrc"
 echo ""
 echo "Then test with:"
+echo ""
 echo "  yt https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 echo "  ytmp3 https://www.youtube.com/watch?v=BaW_jOozKJk"
 echo ""
