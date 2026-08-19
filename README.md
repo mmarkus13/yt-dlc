@@ -12,9 +12,9 @@ No GUI bloat, no complicated configuration — just a small set of wrapper scrip
 # **Install everything with a single command:**
 
 > bash
+<!--echo 'export PATH="$HOME/scripts:$PATH"' >> ~/.bashrc && \ # I've moved this part to the installer-->
 ```
 mkdir -p ~/scripts && cd ~/scripts && \
-echo 'export PATH="$HOME/scripts:$PATH"' >> ~/.bashrc && \
 curl -fsSL "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/installer.sh" \
   -o installer.sh && \
 chmod +x installer.sh && \
