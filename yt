@@ -1,6 +1,6 @@
 #!/bin/bash
 
-YTDL="/home/$USER/scripts/yt-dlp"
+YTDL="$HOME/scripts/yt-dlp"
 OUTPUT_DIR="${YOUTUBE_DOWNLOAD_PATH:-$PWD}"
 
 if [[ ! -f "$YTDL" ]]; then
@@ -8,10 +8,10 @@ if [[ ! -f "$YTDL" ]]; then
     exit 1
 fi
 
-if [ "$#" -eq 0 ]; then
+if [[ "$#" -eq 0 ]]; then
     read -r -p "Enter YouTube URL: " URL
 
-    if [ -z "$URL" ]; then
+    if [[ -z "$URL" ]]; then
         echo "Error: No URL provided" >&2
         exit 1
     fi
@@ -19,9 +19,27 @@ if [ "$#" -eq 0 ]; then
     set -- "$URL"
 fi
 
+echo "Downloading..."
+
+if "$YTDL" \
+    --js-runtimes deno \
+    --paths "$OUTPUT_DIR" \
+    -S res,ext:mp4,m4a \
+    --recode mp4 \
+    --no-part \
+    "$@"
+then
+    exit 0
+fi
+
+echo "" >&2
+echo "Normal extraction failed; retrying with YouTube web client..." >&2
+echo "" >&2
+
 exec "$YTDL" \
     --js-runtimes deno \
     --extractor-args "youtube:player_client=web" \
+    --paths "$OUTPUT_DIR" \
     -S res,ext:mp4,m4a \
     --recode mp4 \
     --no-part \
