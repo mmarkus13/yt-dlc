@@ -1,0 +1,36 @@
+#!/bin/bash
+
+YTDL="/home/$USER/scripts/yt-dlp"
+OUTPUT_DIR="${YOUTUBE_DOWNLOAD_PATH:-$PWD}"
+
+if [[ ! -f "$YTDL" ]]; then
+    echo "Error: yt-dlp not found at $YTDL" >&2
+    exit 1
+fi
+
+if [ -z "$1" ]; then
+    read -p "Enter YouTube URL: " URL
+else
+    URL="$1"
+fi
+
+if [ -z "$URL" ]; then
+    echo "Error: No URL provided" >&2
+    exit 1
+fi
+
+#exec "$YTDL" \
+#    --js-runtimes deno \
+#    --no-part \
+#    -S res,ext:mp4:m4a \
+#    -P "/home/$USER/Downloads/youtube" \
+#    --recode mp4 \
+#    "$URL"
+
+exec "$YTDL" \
+    --js-runtimes deno \
+    --extractor-args "youtube:player_client=ios,web" \
+    -S res,ext:mp4:m4a \
+    -P "$OUTPUT_DIR" \
+    --recode mp4 \
+    "$URL"
