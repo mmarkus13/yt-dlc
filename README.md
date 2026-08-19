@@ -1,7 +1,7 @@
 <!--````-->
 # 🎵 YouTube Downloader CLI
 
-A lightweight command-line YouTube downloader built around [yt-dlp](https://github.com/yt-dlp/yt-dlp), Deno, and FFmpeg.
+A lightweight command-line YouTube downloader built around [yt-dlp](https://github.com/yt-dlp/yt-dlp), Deno, Python, and FFmpeg.
 
 No GUI bloat, no complicated configuration — just a small set of wrapper scripts for downloading video and audio from the command line.
 
@@ -21,7 +21,7 @@ chmod +x installer.sh && \
 ./installer.sh
 ```
 
-After installation, **reload your shell once**:
+After installation, **reload your shell once (or simply close and re-open)**:
 
 ```bash
 source ~/.bashrc
@@ -42,13 +42,13 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 
 | Feature | Description |
 |---|---|
-| **Video Download** | Downloads the best available video/audio and produces an MP4 when possible |
-| **Audio Extraction** | Extracts the best available audio and converts it to MP3 with FFmpeg |
+| **Video Download** | Downloads the best available video/audio with automatic format selection |
+| **Audio Extraction** | Extracts the best available source audio and converts it to MP3 with FFmpeg |
 | **Interactive Mode** | Run the wrapper without arguments to prompt for a URL |
 | **Playlists** | Download individual videos or entire playlists |
 | **Resume Support** | Interrupted downloads can be resumed |
 | **Cross-Platform** | Designed for Linux, macOS, and WSL |
-| **Minimal Setup** | Uses the official yt-dlp binary instead of a Python installation |
+| **Python-Based Setup** | Python 3.11+ is used by this setup |
 | **Customizable** | Standard yt-dlp options can be passed through the wrappers |
 
 ---
@@ -57,9 +57,9 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 
 | Feature | This Setup | Tartube |
 |---|---|---|
-| **Installation** | ~5 minutes | More involved |
+| **Installation** | Simple CLI installer | More involved |
 | **Interface** | CLI | GUI |
-| **Dependencies** | yt-dlp, Deno, FFmpeg | GUI and backend dependencies |
+| **Dependencies** | Python, yt-dlp, Deno, FFmpeg | GUI and backend dependencies |
 | **Flexibility** | Full yt-dlp CLI access | GUI-oriented |
 | **Resource Usage** | Very lightweight | Higher |
 | **Maintenance** | A few scripts + yt-dlp | Multiple application components |
@@ -73,25 +73,28 @@ This project is intended for users who prefer a terminal-based workflow and dire
 
 ### Required
 
-| Component | Recommended | Purpose |
+| Component | Minimum / Recommended | Purpose |
 |---|---|---|
+| **Python** | 3.11+ | Required by this setup |
 | **yt-dlp** | Latest stable release | YouTube downloader |
 | **Deno** | Current supported version | JavaScript runtime used by yt-dlp for YouTube |
 | **FFmpeg** | Current stable version | Video merging and audio conversion |
 
-### Python?
+### Python and yt-dlp
 
-**Python is not required** when using the official standalone yt-dlp binary.
+**Python 3.11+ is required by this setup.**
 
-This README uses the official standalone yt-dlp executable, so there is no need to install yt-dlp through `pip`.
+The official standalone yt-dlp executable itself is self-contained and does not require a separate Python installation. However, this project uses Python as part of its overall setup, so Python 3.11 or newer must be available.
 
-If you choose to install yt-dlp through PyPI instead, use:
+If you choose to install yt-dlp through PyPI instead of using the standalone executable, use:
 
 ```bash
 python3 -m pip install -U "yt-dlp[default]"
 ```
 
-This installs the default dependencies, including the appropriate EJS package.
+The `default` dependency group includes the appropriate `yt-dlp-ejs` package. :contentReference[oaicite:2]{index=2}
+
+> **Note:** If you use the official standalone yt-dlp executable, you do **not** need to install `yt-dlp-ejs` separately. The required EJS components are already included in the official executable. :contentReference[oaicite:3]{index=3}
 
 ### Why Deno?
 
@@ -110,7 +113,46 @@ This section is provided for transparency and for users who prefer to install an
 
 These instructions target Linux, macOS, and WSL (Windows Subsystem for Linux).
 
-## 1. Create the Scripts Directory
+---
+
+## 1. Install Python
+
+Python 3.11 or newer is required by this setup.
+
+### Debian / Ubuntu / WSL
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip
+```
+
+Check the installed version:
+
+```bash
+python3 --version
+```
+
+Make sure it reports Python `3.11` or newer.
+
+If your distribution provides an older Python version by default, install Python 3.11+ using the appropriate package source for your distribution.
+
+### macOS
+
+If you use Homebrew:
+
+```bash
+brew install python
+```
+
+Verify:
+
+```bash
+python3 --version
+```
+
+---
+
+## 2. Create the Scripts Directory
 
 ```bash
 mkdir -p "$HOME/scripts"
@@ -118,7 +160,7 @@ mkdir -p "$HOME/scripts"
 
 ---
 
-## 2. Install Deno
+## 3. Install Deno
 
 Install Deno using the official installer:
 
@@ -144,33 +186,33 @@ If you use Zsh instead of Bash, add the environment variables to `~/.zshrc` inst
 
 ---
 
-## 3. Install yt-dlp
+## 4. Install yt-dlp
 
 Download the official standalone yt-dlp binary:
 
 ```bash
-curl -L \
+sudo curl -L \
   "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
-  -o "$HOME/scripts/yt-dlp"
+  -o /usr/local/bin/yt-dlp
 ```
 
 Make it executable:
 
 ```bash
-chmod +x "$HOME/scripts/yt-dlp"
+sudo chmod a+rx /usr/local/bin/yt-dlp
 ```
 
 Verify:
 
 ```bash
-"$HOME/scripts/yt-dlp" --version
+yt-dlp --version
 ```
 
-The standalone binary does not require Python.
+The official standalone executable does not require Python to run. Python remains a requirement of this overall `yt-dlc` setup.
 
 ---
 
-## 4. Install FFmpeg
+## 5. Install FFmpeg
 
 ### Debian / Ubuntu / WSL
 
@@ -203,23 +245,22 @@ ffmpeg -version
 
 ---
 
-## 5. Install the wrapper scripts
+## 6. Install the Wrapper Scripts
 
-### Option A — Clone the repository
+### Option A — Clone the Repository
 
-Replace `YOUR_USERNAME` with your GitHub username:
+Clone the repository:
 
 ```bash
-git clone \
-  "https://github.com/YOUR_USERNAME/youtube-downloader-cli.git" \
-  "$HOME/youtube-downloader-cli"
+git clone "https://github.com/mmarkus13/yt-dlc.git" \
+  "$HOME/yt-dlc"
 ```
 
-Copy the wrappers:
+Copy the wrapper scripts:
 
 ```bash
-cp "$HOME/youtube-downloader-cli/yt" "$HOME/scripts/yt"
-cp "$HOME/youtube-downloader-cli/ytmp3" "$HOME/scripts/ytmp3"
+cp "$HOME/yt-dlc/yt" "$HOME/scripts/yt"
+cp "$HOME/yt-dlc/ytmp3" "$HOME/scripts/ytmp3"
 ```
 
 Make them executable:
@@ -228,15 +269,15 @@ Make them executable:
 chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
 ```
 
-### Option B — Download the wrappers directly
+### Option B — Download the Wrapper Scripts Directly
 
 ```bash
-curl -L \
-  "https://raw.githubusercontent.com/YOUR_USERNAME/youtube-downloader-cli/main/yt" \
+curl -fsSL \
+  "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/yt" \
   -o "$HOME/scripts/yt"
 
-curl -L \
-  "https://raw.githubusercontent.com/YOUR_USERNAME/youtube-downloader-cli/main/ytmp3" \
+curl -fsSL \
+  "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/ytmp3" \
   -o "$HOME/scripts/ytmp3"
 
 chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
@@ -244,10 +285,17 @@ chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
 
 ---
 
-## 6. Add `~/scripts` to your PATH
+## 7. Add `~/scripts` to Your PATH
+
+Add the scripts directory to your Bash `PATH`:
 
 ```bash
 echo 'export PATH="$HOME/scripts:$PATH"' >> "$HOME/.bashrc"
+```
+
+Reload:
+
+```bash
 source "$HOME/.bashrc"
 ```
 
@@ -264,14 +312,14 @@ You should see paths similar to:
 ```text
 /home/yourname/scripts/yt
 /home/yourname/scripts/ytmp3
-/home/yourname/scripts/yt-dlp
+/usr/local/bin/yt-dlp
 ```
 
 ---
 
 # 🎬 Usage
 
-## Download a video
+## Download a Video
 
 ```bash
 yt "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
@@ -285,7 +333,7 @@ yt "https://youtu.be/VIDEO_ID"
 
 ---
 
-## Download audio as MP3
+## Download Audio as MP3
 
 ```bash
 ytmp3 "https://www.youtube.com/watch?v=MUSIC_ID"
@@ -300,7 +348,7 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 
 ---
 
-## Download into a specific directory
+## Download into a Specific Directory
 
 Change directories before running the command:
 
@@ -346,13 +394,13 @@ yt --ignore-errors \
 
 The wrappers pass standard yt-dlp options through, so normal yt-dlp arguments can be used.
 
-### Don't overwrite existing files
+### Don't Overwrite Existing Files
 
 ```bash
 yt --no-overwrites "https://youtu.be/VIDEO_ID"
 ```
 
-### Add a delay between downloads
+### Add a Delay Between Downloads
 
 ```bash
 yt \
@@ -361,7 +409,7 @@ yt \
   "https://youtu.be/VIDEO_ID"
 ```
 
-### Specify a country for geo-restricted content
+### Specify a Country for Geo-Restricted Content
 
 ```bash
 yt \
@@ -375,30 +423,68 @@ yt \
 
 # 📁 Recommended Directory Structure
 
-After installation, your home directory can look like this:
+After installation, your system can look like this:
 
 ```text
 ~
 ├── scripts/
 │   ├── yt
-│   ├── ytmp3
-│   └── yt-dlp
+│   └── ytmp3
 │
-├── Downloads/
-│   └── YouTube downloads
-│
-├── Music/
-│   └── MP3 downloads
-│
-└── youtube-downloader-cli/
+└── yt-dlc/
     ├── README.md
+    ├── installer.sh
     ├── yt
     └── ytmp3
+
+/usr/local/bin/
+└── yt-dlp
+```
+
+Downloaded media can be stored wherever you choose, for example:
+
+```text
+~/Downloads/
+└── YouTube downloads
+
+~/Music/
+└── MP3 downloads
 ```
 
 ---
 
 # 🔧 Troubleshooting
+
+## `python3: command not found`
+
+Check Python:
+
+```bash
+python3 --version
+```
+
+If it is missing, install Python 3.11+ using your operating system's package manager.
+
+On Debian / Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install -y python3 python3-pip
+```
+
+---
+
+## Python Version Warning
+
+Check your version:
+
+```bash
+python3 --version
+```
+
+This project requires Python `3.11` or newer.
+
+---
 
 ## `deno: command not found`
 
@@ -437,7 +523,7 @@ source "$HOME/.zshrc"
 
 ---
 
-## YouTube reports that no JavaScript runtime was found
+## YouTube Reports That No JavaScript Runtime Was Found
 
 Check Deno:
 
@@ -472,13 +558,7 @@ Your yt-dlp version is probably too old.
 Update it:
 
 ```bash
-yt-dlp -U
-```
-
-Or:
-
-```bash
-"$HOME/scripts/yt-dlp" -U
+sudo yt-dlp -U
 ```
 
 Then:
@@ -494,7 +574,7 @@ yt-dlp --version
 First update yt-dlp:
 
 ```bash
-yt-dlp -U
+sudo yt-dlp -U
 ```
 
 Then check Deno:
@@ -561,14 +641,6 @@ Incorrect:
 
 ---
 
-## Python version warnings
-
-If you are using the standalone yt-dlp binary from this README, Python is not involved.
-
-If you installed yt-dlp through Python/pip, make sure you're using a currently supported Python version.
-
----
-
 # 🧹 Cleaning Partial Downloads
 
 To find partial files in your home directory:
@@ -600,6 +672,7 @@ find "$HOME" -type f \( \
 Run:
 
 ```bash
+python3 --version
 yt-dlp --version
 deno --version
 ffmpeg -version
@@ -607,6 +680,8 @@ which yt
 which ytmp3
 which yt-dlp
 ```
+
+You should have Python `3.11+`.
 
 Then test a video:
 
@@ -626,16 +701,16 @@ ytmp3 "https://www.youtube.com/watch?v=BaW_jOozKJk"
 
 ## Update yt-dlp
 
-Because you're using the standalone binary:
+Because the standalone binary is installed in `/usr/local/bin`:
 
 ```bash
-yt-dlp -U
+sudo yt-dlp -U
 ```
 
-Or:
+Verify:
 
 ```bash
-"$HOME/scripts/yt-dlp" -U
+yt-dlp --version
 ```
 
 Keeping yt-dlp updated is particularly important because YouTube changes frequently and yt-dlp releases regularly contain extractor fixes.
@@ -844,117 +919,15 @@ chmod +x yt ytmp3
 
 ---
 
-# 🚀 Publishing to GitHub
-
-Create the repository directory:
-
-```bash
-mkdir -p "$HOME/youtube-downloader-cli"
-cd "$HOME/youtube-downloader-cli"
-```
-
-Copy the wrapper files:
-
-```bash
-cp "$HOME/scripts/yt" .
-cp "$HOME/scripts/ytmp3" .
-```
-
-Create the README:
-
-```bash
-nano README.md
-```
-
-Initialize Git:
-
-```bash
-git init
-git add .
-git commit -m "Initial release: YouTube downloader CLI"
-```
-
-Create an empty GitHub repository named:
-
-```text
-youtube-downloader-cli
-```
-
-Then configure the remote:
-
-```bash
-git remote add origin \
-  "https://github.com/YOUR_USERNAME/youtube-downloader-cli.git"
-
-git branch -M main
-git push -u origin main
-```
-
----
-
-# ⚡ Quick Start
-
-Once the repository is published, a new Linux/WSL installation can follow:
-
-```bash
-git clone \
-  "https://github.com/YOUR_USERNAME/youtube-downloader-cli.git" \
-  "$HOME/youtube-downloader-cli"
-
-mkdir -p "$HOME/scripts"
-
-cp "$HOME/youtube-downloader-cli/yt" "$HOME/scripts/yt"
-cp "$HOME/youtube-downloader-cli/ytmp3" "$HOME/scripts/ytmp3"
-
-chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
-
-curl -fsSL https://deno.land/install.sh | sh
-
-echo 'export DENO_INSTALL="$HOME/.deno"' >> "$HOME/.bashrc"
-echo 'export PATH="$DENO_INSTALL/bin:$HOME/scripts:$PATH"' >> "$HOME/.bashrc"
-
-source "$HOME/.bashrc"
-
-curl -L \
-  "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
-  -o "$HOME/scripts/yt-dlp"
-
-chmod +x "$HOME/scripts/yt-dlp"
-
-sudo apt update
-sudo apt install -y ffmpeg
-```
-
-Verify:
-
-```bash
-yt-dlp --version
-deno --version
-ffmpeg -version
-```
-
-Then download:
-
-```bash
-yt "https://youtu.be/VIDEO_ID"
-```
-
-Or extract audio:
-
-```bash
-ytmp3 "https://youtu.be/MUSIC_ID"
-```
-
----
-
 # 📌 Important Notes
 
 - Keep yt-dlp updated because YouTube changes frequently.
 - Keep Deno updated and use a currently supported version.
+- Python 3.11+ is required by this `yt-dlc` setup.
 - FFmpeg is required for many video/audio processing operations.
-- The official standalone yt-dlp binary includes the EJS scripts needed by yt-dlp.
-- A separate `pip install yt-dlp-ejs` is therefore not required for this standalone-binary setup.
+- The official standalone yt-dlp executable already includes the EJS components required for YouTube support. :contentReference[oaicite:4]{index=4}
 - If you install yt-dlp through PyPI instead, use `yt-dlp[default]`.
+- A separate `pip install yt-dlp-ejs` is not required when using the official standalone executable. :contentReference[oaicite:5]{index=5}
 - Avoid relying on permanently hard-coded YouTube client workarounds.
 - Only download content you have the right to download and use.
 
@@ -963,4 +936,3 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 **Happy downloading! 🎵**
 
 *Last tested: August 2026 · yt-dlp `2026.07.04` · Deno `2.9.5`*
-````
