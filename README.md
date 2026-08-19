@@ -9,21 +9,33 @@ No GUI bloat, no complicated configuration — just a small set of wrapper scrip
 
 ---
 
-# **Install everything with a single command:**
+## 🚀 Quick Install
 
-> bash
-<!--echo 'export PATH="$HOME/scripts:$PATH"' >> ~/.bashrc && \ # I've moved this part to the installer-->
-```
+> **Install everything with a single command block:**
+
+```bash
 mkdir -p ~/scripts && cd ~/scripts && \
 curl -fsSL "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/installer.sh" \
   -o installer.sh && \
 chmod +x installer.sh && \
 ./installer.sh
 ```
-> then before first usage don't forget to reload your shell: \
-`source ~/.bashrc`
 
-> *#note: bash commands works under [Windows (10 & 11) WSL](https://learn.microsoft.com/en-us/windows/wsl/install) as well!*
+After installation, **reload your shell once**:
+
+```bash
+source ~/.bashrc
+```
+
+You can then run `yt` and `ytmp3` from any directory:
+
+```bash
+yt "https://youtu.be/VIDEO_ID"
+ytmp3 "https://youtu.be/MUSIC_ID"
+```
+
+> 💡 **WSL:** The same Bash commands work on Windows 10 and 11 through [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install).
+
 ---
 
 ## ✨ Features
@@ -89,12 +101,16 @@ Deno is the recommended JavaScript runtime for yt-dlp's YouTube support.
 
 ---
 
-# 🚀 Detailed Setup
-> #note: this is for transparency; if you'd like a quick & easy install head back to the [top](https://github.com/mmarkus13/yt-dlc/tree/main#user-content-install-everything-with-a-single-command) of the page...
+# 🔧 Detailed / Manual Setup
 
-These instructions target Linux, macOS, and WSL.
+> **Prefer the easy way?**  
+> Use the [Quick Install](#-quick-install) section at the top of this README.
 
-## 1. Create the scripts directory
+This section is provided for transparency and for users who prefer to install and configure each component manually.
+
+These instructions target Linux, macOS, and WSL (Windows Subsystem for Linux).
+
+## 1. Create the Scripts Directory
 
 ```bash
 mkdir -p "$HOME/scripts"
