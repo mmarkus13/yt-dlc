@@ -9,6 +9,22 @@ No GUI bloat, no complicated configuration — just a small set of wrapper scrip
 
 ---
 
+# **Install everything with a single command:**
+
+> bash
+```
+mkdir -p ~/scripts && cd ~/scripts && \
+curl -fsSL "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/installer.sh" \
+  -o installer.sh && \
+chmod +x installer.sh && \
+./installer.sh
+```
+> before using don't forget to reload your shell: \
+`source ~/.bashrc`
+
+> *note: bash commands works under [Windows (10 & 11) WSL](https://learn.microsoft.com/en-us/windows/wsl/install) as well*
+---
+
 ## ✨ Features
 
 | Feature | Description |
