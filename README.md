@@ -50,7 +50,9 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 | **Video Download** | Downloads the best available video/audio and produces an MP4 when possible |
 | **Audio Extraction** | Extracts the best available audio and converts it to MP3 with FFmpeg |
 | **Interactive Mode** | Run the wrapper without arguments to prompt for a URL |
-| **Playlists** | Download individual videos or entire playlists |
+| **Batch Downloads** | Download multiple individual URLs without creating a playlist |
+| **Batch Files** | Pass a text file containing multiple URLs directly to yt-dlp |
+| **Playlists** | Download individual videos or entire YouTube playlists |
 | **Resume Support** | Interrupted downloads can be resumed |
 | **Cross-Platform** | Designed for Linux, macOS, WSL, and SteamOS |
 | **Minimal Setup** | Uses the official standalone yt-dlp binary |
@@ -353,6 +355,28 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 
 ---
 
+## Download Multiple Individual URLs
+
+You can provide multiple URLs directly without creating a playlist:
+
+```bash
+yt \
+  "https://youtu.be/VIDEO_ID_1" \
+  "https://youtu.be/VIDEO_ID_2" \
+  "https://youtu.be/VIDEO_ID_3"
+```
+
+For audio:
+
+```bash
+ytmp3 \
+  "https://youtu.be/MUSIC_ID_1" \
+  "https://youtu.be/MUSIC_ID_2" \
+  "https://youtu.be/MUSIC_ID_3"
+```
+
+---
+
 ## Download into a Specific Directory
 
 Change directories before running the command:
@@ -371,9 +395,71 @@ ytmp3 "https://youtu.be/MUSIC_ID"
 
 ---
 
-# 📚 Playlists
+# 📚 Multiple Videos, Songs & Playlists
 
-Download an entire playlist:
+You don't need to create a YouTube playlist to download multiple items.
+
+The wrappers accept multiple URLs in a single command.
+
+## Download Multiple Videos
+
+```bash
+yt \
+  "https://youtu.be/VIDEO_ID_1" \
+  "https://youtu.be/VIDEO_ID_2" \
+  "https://youtu.be/VIDEO_ID_3"
+```
+
+## Download Multiple Songs as MP3
+
+```bash
+ytmp3 \
+  "https://youtu.be/MUSIC_ID_1" \
+  "https://youtu.be/MUSIC_ID_2" \
+  "https://youtu.be/MUSIC_ID_3"
+```
+
+The URLs can be individual videos from completely different playlists or channels.
+
+No YouTube playlist needs to be created.
+
+---
+
+## Download URLs from a Text File
+
+For a larger batch, put one URL per line in a text file:
+
+```text
+https://youtu.be/VIDEO_ID_1
+https://youtu.be/VIDEO_ID_2
+https://youtu.be/VIDEO_ID_3
+```
+
+For example, save the file as:
+
+```text
+urls.txt
+```
+
+Then download all videos:
+
+```bash
+yt --batch-file urls.txt
+```
+
+Or extract them all as MP3:
+
+```bash
+ytmp3 --batch-file urls.txt
+```
+
+Comments and blank lines can be used in the batch file where supported by yt-dlp.
+
+---
+
+## Download an Entire Playlist
+
+You can still download an entire YouTube playlist normally:
 
 ```bash
 yt "https://www.youtube.com/playlist?list=PLAYLIST_ID"
@@ -395,7 +481,47 @@ yt --ignore-errors \
 
 ---
 
+## Mix Individual URLs and Playlists
+
+Because the wrappers pass standard yt-dlp arguments through, you can also provide multiple URLs and playlists in the same command:
+
+```bash
+yt \
+  "https://youtu.be/VIDEO_ID" \
+  "https://www.youtube.com/playlist?list=PLAYLIST_ID"
+```
+
+> **Tip:** For a large or frequently reused collection, a batch file is usually easier to maintain than a very long command line.
+
+---
+
 # ⚙️ Advanced Options
+
+### Download URLs from a File
+
+Create a text file containing one URL per line:
+
+```text
+https://youtu.be/VIDEO_ID_1
+https://youtu.be/VIDEO_ID_2
+https://youtu.be/VIDEO_ID_3
+```
+
+Then:
+
+```bash
+yt --batch-file urls.txt
+```
+
+For MP3 extraction:
+
+```bash
+ytmp3 --batch-file urls.txt
+```
+
+This is useful when downloading a large collection of individual videos or songs without creating a YouTube playlist.
+
+---
 
 The wrappers pass standard yt-dlp options through, so normal yt-dlp arguments can be used.
 
