@@ -8,29 +8,21 @@ if [[ ! -f "$YTDL" ]]; then
     exit 1
 fi
 
-if [ -z "$1" ]; then
-    read -p "Enter YouTube URL: " URL
-else
-    URL="$1"
-fi
+if [ "$#" -eq 0 ]; then
+    read -r -p "Enter YouTube URL: " URL
 
-if [ -z "$URL" ]; then
-    echo "Error: No URL provided" >&2
-    exit 1
-fi
+    if [ -z "$URL" ]; then
+        echo "Error: No URL provided" >&2
+        exit 1
+    fi
 
-#exec "$YTDL" \
-#    --js-runtimes deno \
-#    --no-part \
-#    -S res,ext:mp4:m4a \
-#    -P "/home/$USER/Downloads/youtube" \
-#    --recode mp4 \
-#    "$URL"
+    set -- "$URL"
+fi
 
 exec "$YTDL" \
     --js-runtimes deno \
-    --extractor-args "youtube:player_client=ios,web" \
-    -S res,ext:mp4:m4a \
-    -P "$OUTPUT_DIR" \
+    --extractor-args "youtube:player_client=web" \
+    -S res,ext:mp4,m4a \
     --recode mp4 \
-    "$URL"
+    --no-part \
+    "$@"
