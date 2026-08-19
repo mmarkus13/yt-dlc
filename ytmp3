@@ -7,24 +7,22 @@ if [[ ! -f "$YTDL" ]]; then
     exit 1
 fi
 
-if [ -z "$1" ]; then
-    read -p "Enter YouTube URL: " URL
-else
-    URL="$1"
+if [ "$#" -eq 0 ]; then
+    read -r -p "Enter YouTube URL: " URL
+
+    if [ -z "$URL" ]; then
+        echo "Error: No URL provided" >&2
+        exit 1
+    fi
+
+    set -- "$URL"
 fi
 
-if [ -z "$URL" ]; then
-    echo "Error: No URL provided" >&2
-    exit 1
-fi
-
-# Force web client + prefer m4a over webm (less restrictive)
 exec "$YTDL" \
     --js-runtimes deno \
     --extractor-args "youtube:player_client=web" \
-    --format "bestaudio[ext=m4a]/bestaudio" \
     --extract-audio \
     --audio-format mp3 \
     --audio-quality 0 \
     --no-part \
-    "$URL"
+    "$@"
