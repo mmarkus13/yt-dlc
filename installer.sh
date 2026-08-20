@@ -2,109 +2,91 @@
 
 # YouTube Downloader CLI - Automated Installer
 #
-# Quick install:
+# Usage:
 # mkdir -p ~/scripts && cd ~/scripts && \
 # curl -fsSL "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/installer.sh" \
 #   -o installer.sh && \
 # chmod +x installer.sh && \
 # ./installer.sh
 
-set -euo pipefail
+set -e
 
 SCRIPT_DIR="$HOME/scripts"
+BASHRC="$HOME/.bashrc"
 REPO_RAW="https://raw.githubusercontent.com/mmarkus13/yt-dlc/main"
 
 echo "🎵 YouTube Downloader CLI Installer"
 echo "==================================="
 
 # ------------------------------------------------------------
-# Shell configuration
-# ------------------------------------------------------------
-
-case "${SHELL##*/}" in
-    zsh)
-        SHELL_RC="$HOME/.zshrc"
-        ;;
-    *)
-        SHELL_RC="$HOME/.bashrc"
-        ;;
-esac
-
-add_to_path() {
-    local line='export PATH="$HOME/scripts:$PATH"'
-
-    if [[ ! -f "$SHELL_RC" ]]; then
-        touch "$SHELL_RC"
-    fi
-
-    if ! grep -Fqx "$line" "$SHELL_RC" 2>/dev/null; then
-        echo "$line" >> "$SHELL_RC"
-        echo "✓ Added ~/scripts to $SHELL_RC"
-    else
-        echo "✓ ~/scripts already configured in $SHELL_RC"
-    fi
-
-    export PATH="$HOME/scripts:$PATH"
-}
-
-add_deno_to_path() {
-    local deno_line='export DENO_INSTALL="$HOME/.deno"'
-    local path_line='export PATH="$DENO_INSTALL/bin:$PATH"'
-
-    if ! grep -Fqx "$deno_line" "$SHELL_RC" 2>/dev/null; then
-        echo "$deno_line" >> "$SHELL_RC"
-    fi
-
-    if ! grep -Fqx "$path_line" "$SHELL_RC" 2>/dev/null; then
-        echo "$path_line" >> "$SHELL_RC"
-    fi
-
-    export DENO_INSTALL="$HOME/.deno"
-    export PATH="$DENO_INSTALL/bin:$PATH"
-}
-
-# ------------------------------------------------------------
 # Step 1: Create scripts directory
 # ------------------------------------------------------------
 
 echo "[1/6] Creating $SCRIPT_DIR..."
+
 mkdir -p "$SCRIPT_DIR"
+
+echo "✓ Scripts directory ready"
 
 # ------------------------------------------------------------
 # Step 2: Configure PATH
 # ------------------------------------------------------------
 
 echo "[2/6] Configuring PATH..."
-add_to_path
+
+if [[ -f "$BASHRC" ]] &&
+   grep -Fqx 'export PATH="$HOME/scripts:$PATH"' "$BASHRC"; then
+
+    echo "✓ PATH already configured"
+
+else
+
+    echo 'export PATH="$HOME/scripts:$PATH"' >> "$BASHRC"
+
+    echo "✓ PATH configured"
+
+fi
+
+# Make it available immediately in this installer process.
+export PATH="$HOME/scripts:$PATH"
 
 # ------------------------------------------------------------
-# Step 3: Install Deno
+# Step 3: Install / configure Deno
 # ------------------------------------------------------------
 
 echo "[3/6] Checking Deno..."
 
 if command -v deno >/dev/null 2>&1; then
-    echo "✓ Deno already installed: $(deno --version | head -n1)"
+
+    echo "✓ Deno already installed:"
+    deno --version | head -n1
+
 else
+
     echo "Installing Deno..."
 
-    curl -fsSL "https://deno.land/install.sh" | sh
+    curl -fsSL https://deno.land/install.sh | sh
 
-    add_deno_to_path
-
-    if ! command -v deno >/dev/null 2>&1; then
-        echo "Error: Deno installation completed but 'deno' is not available." >&2
-        echo "Try opening a new shell and running: deno --version" >&2
-        exit 1
-    fi
-
-    echo "✓ Deno installed: $(deno --version | head -n1)"
-fi
-
-# Make sure Deno's path is available even if it was installed previously.
-if [[ -x "$HOME/.deno/bin/deno" ]]; then
     export DENO_INSTALL="$HOME/.deno"
     export PATH="$DENO_INSTALL/bin:$PATH"
+
+    if [[ -f "$BASHRC" ]] &&
+       ! grep -Fqx 'export DENO_INSTALL="$HOME/.deno"' "$BASHRC"; then
+
+        echo 'export DENO_INSTALL="$HOME/.deno"' >> "$BASHRC"
+
+    fi
+
+    if [[ -f "$BASHRC" ]] &&
+       ! grep -Fqx 'export PATH="$DENO_INSTALL/bin:$PATH"' "$BASHRC"; then
+
+        echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> "$BASHRC"
+
+    fi
+
+    echo "✓ Deno installed:"
+    deno --version | head -n1
+
 fi
 
 # ------------------------------------------------------------
@@ -119,143 +101,154 @@ curl -fsSL \
 
 chmod +x "$SCRIPT_DIR/yt-dlp"
 
-echo "✓ yt-dlp installed: $("$SCRIPT_DIR/yt-dlp" --version)"
+echo "✓ yt-dlp installed:"
+"$SCRIPT_DIR/yt-dlp" --version
 
 # ------------------------------------------------------------
-# Step 5: Check / install FFmpeg
+# Step 5: Check / optionally install FFmpeg
 # ------------------------------------------------------------
 
 echo "[5/6] Checking FFmpeg..."
 
 if command -v ffmpeg >/dev/null 2>&1; then
-    echo "✓ FFmpeg already installed: $(ffmpeg -version | head -n1)"
+
+    echo "✓ FFmpeg already installed:"
+    ffmpeg -version 2>&1 | head -n1
+
 else
-    echo "⚠ FFmpeg is not installed."
+
+    echo ""
+    echo "⚠️ FFmpeg was not found."
+    echo ""
+    echo "FFmpeg is required for:"
+    echo "  • MP3 extraction"
+    echo "  • Merging separate video/audio streams"
+    echo "  • Various video/audio conversions"
     echo ""
 
-    read -r -p "Would you like the installer to install FFmpeg? [Y/n] " ANSWER
-    ANSWER="${ANSWER:-Y}"
+    read -r -p "Would you like to install FFmpeg now? [Y/n] " INSTALL_FFMPEG
 
-    if [[ "$ANSWER" =~ ^[Yy]$ ]]; then
+    INSTALL_FFMPEG="${INSTALL_FFMPEG:-Y}"
 
-        if [[ -f /etc/os-release ]]; then
-            . /etc/os-release
-        fi
+    if [[ "$INSTALL_FFMPEG" =~ ^[Yy]$ ]]; then
 
-        if [[ "${ID:-}" == "steamos" ]]; then
+        if command -v apt-get >/dev/null 2>&1; then
 
-            echo ""
-            echo "SteamOS uses a read-only system filesystem by default."
-            echo "FFmpeg will be installed using the SteamOS package manager."
-            echo "The read-only filesystem will be restored afterwards."
-            echo ""
-
-            if ! command -v steamos-readonly >/dev/null 2>&1; then
-                echo "Error: steamos-readonly was not found." >&2
-                echo "Install FFmpeg manually according to your SteamOS version." >&2
-                exit 1
-            fi
-
-            sudo steamos-readonly disable
-
-            restore_readonly() {
-                sudo steamos-readonly enable || true
-            }
-
-            trap restore_readonly EXIT
-
-            sudo pacman -S --needed ffmpeg
-
-            sudo steamos-readonly enable
-            trap - EXIT
-
-        elif command -v apt-get >/dev/null 2>&1; then
+            echo "Installing FFmpeg using apt..."
 
             sudo apt-get update
             sudo apt-get install -y ffmpeg
 
         elif command -v brew >/dev/null 2>&1; then
 
+            echo "Installing FFmpeg using Homebrew..."
+
             brew install ffmpeg
 
         elif command -v pacman >/dev/null 2>&1; then
+
+            echo "Installing FFmpeg using pacman..."
 
             sudo pacman -S --needed ffmpeg
 
         else
 
-            echo "Could not determine a supported package manager." >&2
-            echo "Please install FFmpeg manually and run:" >&2
-            echo "  ffmpeg -version" >&2
-            exit 1
+            echo ""
+            echo "⚠️ No supported package manager was detected."
+            echo "Please install FFmpeg manually."
+            echo ""
 
         fi
 
-        if ! command -v ffmpeg >/dev/null 2>&1; then
-            echo "Error: FFmpeg installation could not be verified." >&2
-            exit 1
-        fi
+        if command -v ffmpeg >/dev/null 2>&1; then
 
-        echo "✓ FFmpeg installed: $(ffmpeg -version | head -n1)"
+            echo "✓ FFmpeg installed:"
+            ffmpeg -version 2>&1 | head -n1
+
+        else
+
+            echo "⚠️ FFmpeg is still not available."
+            echo "You can install it manually later."
+
+        fi
 
     else
-        echo "⚠ FFmpeg installation skipped."
-        echo "Video merging and MP3 extraction may not work correctly."
+
+        echo "⚠️ FFmpeg installation skipped."
+        echo "You can install it manually later."
+
     fi
+
 fi
 
 # ------------------------------------------------------------
-# Step 6: Install wrapper scripts
+# Step 6: Download repository wrapper scripts
 # ------------------------------------------------------------
 
 echo "[6/6] Installing wrapper scripts..."
 
-curl -fsSL \
-    "$REPO_RAW/yt" \
-    -o "$SCRIPT_DIR/yt"
+for SCRIPT in yt ytmp3 yt-dlp-wrapper; do
 
-curl -fsSL \
-    "$REPO_RAW/ytmp3" \
-    -o "$SCRIPT_DIR/ytmp3"
+    echo "Downloading $SCRIPT..."
 
-chmod +x \
-    "$SCRIPT_DIR/yt" \
-    "$SCRIPT_DIR/ytmp3"
+    curl -fsSL \
+        "$REPO_RAW/$SCRIPT" \
+        -o "$SCRIPT_DIR/$SCRIPT"
 
-echo "✓ Installed:"
-echo "  $SCRIPT_DIR/yt"
-echo "  $SCRIPT_DIR/ytmp3"
+    chmod +x "$SCRIPT_DIR/$SCRIPT"
+
+    echo "✓ Installed $SCRIPT"
+
+done
 
 # ------------------------------------------------------------
-# Final verification
+# Activate configuration
+# ------------------------------------------------------------
+
+echo ""
+echo "Activating shell configuration..."
+
+if [[ -f "$BASHRC" ]]; then
+
+    # shellcheck disable=SC1090
+    source "$BASHRC"
+
+fi
+
+export PATH="$HOME/scripts:$PATH"
+
+echo "✓ Shell configuration loaded"
+
+# ------------------------------------------------------------
+# Installation complete
 # ------------------------------------------------------------
 
 echo ""
 echo "🎉 Installation complete!"
 echo ""
-
-echo "Installed versions:"
-echo "  yt-dlp: $(("$SCRIPT_DIR/yt-dlp") --version)"
-echo "  Deno:   $(deno --version | head -n1)"
+echo "Installed:"
+echo "  yt                 → $SCRIPT_DIR/yt"
+echo "  ytmp3              → $SCRIPT_DIR/ytmp3"
+echo "  yt-dlp-wrapper     → $SCRIPT_DIR/yt-dlp-wrapper"
+echo "  yt-dlp             → $SCRIPT_DIR/yt-dlp"
 
 if command -v ffmpeg >/dev/null 2>&1; then
-    echo "  FFmpeg: $(ffmpeg -version | head -n1)"
+    echo "  ffmpeg             → $(command -v ffmpeg)"
 else
-    echo "  FFmpeg: not installed"
+    echo "  ffmpeg             → NOT INSTALLED"
 fi
 
 echo ""
-echo "The installer configured:"
-echo "  $SHELL_RC"
+echo "You can now run:"
+echo ""
+echo '  yt "https://youtu.be/VIDEO_ID"'
+echo '  ytmp3 "https://youtu.be/MUSIC_ID"'
 echo ""
 
-echo "Your current shell may need to reload the configuration:"
-echo "  source \"$SHELL_RC\""
+echo "If the commands are not available in a newly opened shell, run:"
 echo ""
-
-echo "Then test with:"
-echo "  yt https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-echo "  ytmp3 https://www.youtube.com/watch?v=BaW_jOozKJk"
+echo "  source ~/.bashrc"
 echo ""
 
 echo "See README.md for advanced options and troubleshooting."
+echo ""
