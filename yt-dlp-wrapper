@@ -1,0 +1,50 @@
+#!/bin/bash
+
+YTDL="$HOME/scripts/yt-dlp"
+
+if [[ ! -f "$YTDL" ]]; then
+    echo "Error: yt-dlp not found at $YTDL" >&2
+    exit 1
+fi
+
+run_yt_dlp() {
+    "$YTDL" \
+        --js-runtimes deno \
+        "$@"
+}
+
+echo "▶ Downloading..."
+
+# First attempt: normal yt-dlp behavior.
+if run_yt_dlp "$@"; then
+    exit 0
+fi
+
+echo ""
+echo "⚠️ Download failed."
+echo "Checking for a newer yt-dlp version..."
+
+# Update only after a failed download.
+if "$YTDL" -U; then
+    echo "✓ yt-dlp update check completed."
+else
+    echo "⚠️ yt-dlp could not be updated; continuing with the installed version."
+fi
+
+echo ""
+echo "▶ Retrying..."
+
+# Second attempt: after updating yt-dlp.
+if run_yt_dlp "$@"; then
+    exit 0
+fi
+
+echo ""
+echo "⚠️ Standard retry failed."
+echo "▶ Retrying with YouTube web client..."
+
+# Final fallback.
+exec "$YTDL" \
+    --js-runtimes deno \
+    --extractor-args "youtube:player_client=web" \
+    "$@"
