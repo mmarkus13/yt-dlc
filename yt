@@ -1,10 +1,134 @@
 #!/bin/bash
 
-WRAPPER="$HOME/scripts/yt-dlp-wrapper"
+YTDL="$HOME/scripts/yt-dlp"
+CONFIG_DIR="$HOME/.config/yt-dlc"
+CONFIG_FILE="$CONFIG_DIR/config"
 
-if [[ ! -x "$WRAPPER" ]]; then
-    echo "Error: yt-dlp-wrapper not found at $WRAPPER" >&2
+if [[ ! -f "$YTDL" ]]; then
+    echo "Error: yt-dlp not found at $YTDL" >&2
     exit 1
+fi
+
+mkdir -p "$CONFIG_DIR"
+
+# Load existing configuration.
+if [[ -f "$CONFIG_FILE" ]]; then
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+fi
+
+save_video_config() {
+    local enabled="$1"
+    local directory="$2"
+    local temp_file
+
+    temp_file="$(mktemp)"
+
+    if [[ -f "$CONFIG_FILE" ]]; then
+        grep -vE '^(VIDEO_OUTPUT_ENABLED|VIDEO_OUTPUT_DIR)=' \
+            "$CONFIG_FILE" > "$temp_file" || true
+    fi
+
+    printf 'VIDEO_OUTPUT_ENABLED=%q\n' "$enabled" >> "$temp_file"
+
+    if [[ -n "$directory" ]]; then
+        printf 'VIDEO_OUTPUT_DIR=%q\n' "$directory" >> "$temp_file"
+    fi
+
+    mv "$temp_file" "$CONFIG_FILE"
+}
+
+configure_output() {
+    local default_dir="${VIDEO_OUTPUT_DIR:-$HOME/Downloads/YouTube}"
+    local directory
+
+    echo ""
+    echo "🎬 Video download directory configuration"
+    echo ""
+    echo "Current setting:"
+    if [[ "${VIDEO_OUTPUT_ENABLED:-0}" == "1" ]]; then
+        echo "  $VIDEO_OUTPUT_DIR"
+    else
+        echo "  Not configured (uses the current directory)"
+    fi
+    echo ""
+
+    read -r -p "Directory [$default_dir]: " directory
+    directory="${directory:-$default_dir}"
+
+    if [[ ! -d "$directory" ]]; then
+        read -r -p "Directory does not exist. Create it? [Y/n] " answer
+        answer="${answer:-Y}"
+
+        if [[ "$answer" =~ ^[Yy]$ ]]; then
+            if ! mkdir -p "$directory"; then
+                echo "Error: Could not create directory: $directory" >&2
+                return 1
+            fi
+        else
+            echo "Configuration cancelled."
+            return 1
+        fi
+    fi
+
+    if [[ ! -w "$directory" ]]; then
+        echo "Error: Directory is not writable: $directory" >&2
+        return 1
+    fi
+
+    save_video_config 1 "$directory"
+
+    VIDEO_OUTPUT_ENABLED=1
+    VIDEO_OUTPUT_DIR="$directory"
+
+    echo ""
+    echo "✓ Video downloads will now be saved to:"
+    echo "  $VIDEO_OUTPUT_DIR"
+    echo ""
+}
+
+reset_output() {
+    save_video_config 0 ""
+    VIDEO_OUTPUT_ENABLED=0
+    unset VIDEO_OUTPUT_DIR
+
+    echo "✓ Video download directory preference removed."
+    echo "Downloads will use the current directory."
+}
+
+# Handle wrapper-specific configuration commands.
+case "${1:-}" in
+    --configure-output)
+        configure_output
+        exit $?
+        ;;
+    --reset-output)
+        reset_output
+        exit $?
+        ;;
+esac
+
+# First-run configuration.
+if [[ -z "${VIDEO_OUTPUT_ENABLED+x}" ]]; then
+    echo ""
+    echo "🎵 yt-dlc"
+    echo ""
+    echo "No video download directory preference has been configured."
+    echo "Without a preference, downloads will use the current directory."
+    echo ""
+
+    read -r -p "Configure a default video download directory now? [y/N] " answer
+
+    if [[ "$answer" =~ ^[Yy]$ ]]; then
+        configure_output || exit 1
+    else
+        save_video_config 0 ""
+        VIDEO_OUTPUT_ENABLED=0
+        echo ""
+        echo "✓ No preference saved."
+        echo "Downloads will use the current directory."
+        echo ""
+    fi
 fi
 
 if [ "$#" -eq 0 ]; then
@@ -18,8 +142,37 @@ if [ "$#" -eq 0 ]; then
     set -- "$URL"
 fi
 
-exec "$WRAPPER" \
-    -S res,ext:mp4,m4a \
-    --recode mp4 \
-    --no-part \
-    "$@"
+# Temporary environment-variable override.
+OUTPUT_DIR="${YOUTUBE_DOWNLOAD_PATH:-}"
+
+if [[ -z "$OUTPUT_DIR" && "${VIDEO_OUTPUT_ENABLED:-0}" == "1" ]]; then
+    OUTPUT_DIR="$VIDEO_OUTPUT_DIR"
+fi
+
+if [[ -n "$OUTPUT_DIR" ]]; then
+    if [[ ! -d "$OUTPUT_DIR" ]]; then
+        if ! mkdir -p "$OUTPUT_DIR"; then
+            echo "Error: Could not create output directory: $OUTPUT_DIR" >&2
+            exit 1
+        fi
+    fi
+
+    if [[ ! -w "$OUTPUT_DIR" ]]; then
+        echo "Error: Output directory is not writable: $OUTPUT_DIR" >&2
+        exit 1
+    fi
+fi
+
+ARGS=(
+    --js-runtimes deno
+    --extractor-args "youtube:player_client=web"
+    -S "res,ext:mp4,m4a"
+    --recode mp4
+    --no-part
+)
+
+if [[ -n "$OUTPUT_DIR" ]]; then
+    ARGS+=( -P "$OUTPUT_DIR" )
+fi
+
+exec "$YTDL" "${ARGS[@]}" "$@"
