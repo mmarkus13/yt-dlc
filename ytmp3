@@ -29,10 +29,10 @@ save_audio_config() {
             "$CONFIG_FILE" > "$temp_file" || true
     fi
 
-    printf 'AUDIO_OUTPUT_ENABLED=%q\n' "$enabled"
+    printf 'AUDIO_OUTPUT_ENABLED=%q\n' "$enabled" >> "$temp_file"
 
     if [[ -n "$directory" ]]; then
-        printf 'AUDIO_OUTPUT_DIR=%q\n' "$directory"
+        printf 'AUDIO_OUTPUT_DIR=%q\n' "$directory" >> "$temp_file"
     fi
 
     mv "$temp_file" "$CONFIG_FILE"
