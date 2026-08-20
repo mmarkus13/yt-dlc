@@ -1,10 +1,9 @@
 #!/bin/bash
 
-YTDL="$HOME/scripts/yt-dlp"
-OUTPUT_DIR="${YOUTUBE_DOWNLOAD_PATH:-$PWD}"
+WRAPPER="$HOME/scripts/yt-dlp-wrapper"
 
-if [[ ! -f "$YTDL" ]]; then
-    echo "Error: yt-dlp not found at $YTDL" >&2
+if [[ ! -x "$WRAPPER" ]]; then
+    echo "Error: yt-dlp-wrapper not found at $WRAPPER" >&2
     exit 1
 fi
 
@@ -19,47 +18,8 @@ if [ "$#" -eq 0 ]; then
     set -- "$URL"
 fi
 
-COMMON_ARGS=(
-    --js-runtimes deno
-    -S res,ext:mp4,m4a
-    --recode mp4
-    --no-part
-)
-
-echo "▶ Downloading..."
-
-if "$YTDL" \
-    "${COMMON_ARGS[@]}" \
-    "$@"
-then
-    exit 0
-fi
-
-echo ""
-echo "⚠️ Download failed."
-echo "Checking for a newer yt-dlp version..."
-
-if "$YTDL" -U; then
-    echo "✓ yt-dlp update check completed."
-else
-    echo "⚠️ yt-dlp could not be updated; continuing with the installed version."
-fi
-
-echo ""
-echo "▶ Retrying..."
-
-if "$YTDL" \
-    "${COMMON_ARGS[@]}" \
-    "$@"
-then
-    exit 0
-fi
-
-echo ""
-echo "⚠️ Standard retry failed."
-echo "▶ Retrying with YouTube web client..."
-
-exec "$YTDL" \
-    "${COMMON_ARGS[@]}" \
-    --extractor-args "youtube:player_client=web" \
+exec "$WRAPPER" \
+    -S res,ext:mp4,m4a \
+    --recode mp4 \
+    --no-part \
     "$@"
