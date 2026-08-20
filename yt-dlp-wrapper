@@ -1,50 +1,233 @@
 #!/bin/bash
 
-YTDL="$HOME/scripts/yt-dlp"
+set -u
 
-if [[ ! -f "$YTDL" ]]; then
+YTDL="$HOME/scripts/yt-dlp"
+CONFIG_DIR="$HOME/.config/yt-dlc"
+CONFIG_FILE="$CONFIG_DIR/config"
+
+MODE=""
+
+# ------------------------------------------------------------
+# Argument handling
+# ------------------------------------------------------------
+
+if [[ "${1:-}" == "--mode" ]]; then
+    MODE="${2:-}"
+    shift 2
+fi
+
+case "$MODE" in
+    video|audio)
+        ;;
+    *)
+        echo "Error: yt-dlp-wrapper must be called through yt or ytmp3." >&2
+        exit 2
+        ;;
+esac
+
+# ------------------------------------------------------------
+# Check yt-dlp
+# ------------------------------------------------------------
+
+if [[ ! -x "$YTDL" ]]; then
     echo "Error: yt-dlp not found at $YTDL" >&2
     exit 1
 fi
 
-run_yt_dlp() {
-    "$YTDL" \
-        --js-runtimes deno \
-        "$@"
+# ------------------------------------------------------------
+# Configuration
+# ------------------------------------------------------------
+
+VIDEO_OUTPUT_DIR=""
+AUDIO_OUTPUT_DIR=""
+
+load_config() {
+    if [[ -f "$CONFIG_FILE" ]]; then
+        # shellcheck disable=SC1090
+        source "$CONFIG_FILE"
+    fi
 }
+
+save_config() {
+    mkdir -p "$CONFIG_DIR"
+
+    {
+        printf '# yt-dlc download preferences\n'
+        printf '# This file can be edited manually.\n\n'
+
+        printf 'VIDEO_OUTPUT_DIR=%q\n' "$VIDEO_OUTPUT_DIR"
+        printf 'AUDIO_OUTPUT_DIR=%q\n' "$AUDIO_OUTPUT_DIR"
+    } > "$CONFIG_FILE"
+}
+
+configure_preferences() {
+    echo ""
+    echo "🎵 First-time setup"
+    echo ""
+    echo "Would you like to configure default download directories?"
+    echo ""
+    echo "If you choose No, downloads will use the current directory."
+    echo ""
+
+    read -r -p "Configure download directories? [y/N] " ANSWER
+
+    if [[ ! "$ANSWER" =~ ^[Yy]$ ]]; then
+        VIDEO_OUTPUT_DIR=""
+        AUDIO_OUTPUT_DIR=""
+        save_config
+        echo ""
+        echo "✓ Preferences saved. Downloads will use the current directory."
+        return
+    fi
+
+    echo ""
+    echo "Video downloads"
+    echo "---------------"
+    read -r -p "Default video directory (leave blank for current directory): " VIDEO_OUTPUT_DIR
+
+    if [[ -n "$VIDEO_OUTPUT_DIR" ]]; then
+        mkdir -p "$VIDEO_OUTPUT_DIR"
+        VIDEO_OUTPUT_DIR="$(cd "$VIDEO_OUTPUT_DIR" && pwd)"
+    fi
+
+    echo ""
+    echo "MP3 downloads"
+    echo "-------------"
+    read -r -p "Default music directory (leave blank for current directory): " AUDIO_OUTPUT_DIR
+
+    if [[ -n "$AUDIO_OUTPUT_DIR" ]]; then
+        mkdir -p "$AUDIO_OUTPUT_DIR"
+        AUDIO_OUTPUT_DIR="$(cd "$AUDIO_OUTPUT_DIR" && pwd)"
+    fi
+
+    save_config
+
+    echo ""
+    echo "✓ Download preferences saved to:"
+    echo "  $CONFIG_FILE"
+}
+
+load_config
+
+# First run: create preferences.
+if [[ ! -f "$CONFIG_FILE" ]]; then
+    configure_preferences
+fi
+
+# ------------------------------------------------------------
+# Determine output directory
+# ------------------------------------------------------------
+
+case "$MODE" in
+    video)
+        OUTPUT_DIR="${VIDEO_OUTPUT_DIR:-$PWD}"
+        ;;
+    audio)
+        OUTPUT_DIR="${AUDIO_OUTPUT_DIR:-$PWD}"
+        ;;
+esac
+
+# Ensure configured directory exists.
+mkdir -p "$OUTPUT_DIR"
+
+# ------------------------------------------------------------
+# Build common yt-dlp arguments
+# ------------------------------------------------------------
+
+COMMON_ARGS=(
+    --js-runtimes deno
+    --no-part
+    -P "$OUTPUT_DIR"
+)
+
+if [[ "$MODE" == "video" ]]; then
+
+    COMMON_ARGS+=(
+        -S "res,ext:mp4,m4a"
+        --recode mp4
+    )
+
+elif [[ "$MODE" == "audio" ]]; then
+
+    COMMON_ARGS+=(
+        --extract-audio
+        --audio-format mp3
+        --audio-quality 0
+    )
+
+fi
+
+# ------------------------------------------------------------
+# Interactive URL mode
+# ------------------------------------------------------------
+
+if [[ "$#" -eq 0 ]]; then
+
+    read -r -p "Enter YouTube URL: " URL
+
+    if [[ -z "$URL" ]]; then
+        echo "Error: No URL provided" >&2
+        exit 1
+    fi
+
+    set -- "$URL"
+
+fi
+
+# ------------------------------------------------------------
+# Download function
+# ------------------------------------------------------------
+
+run_yt_dlp() {
+    "$YTDL" "${COMMON_ARGS[@]}" "$@"
+}
+
+# ------------------------------------------------------------
+# First attempt
+# ------------------------------------------------------------
 
 echo "▶ Downloading..."
 
-# First attempt: normal yt-dlp behavior.
 if run_yt_dlp "$@"; then
     exit 0
 fi
+
+# ------------------------------------------------------------
+# Update yt-dlp after failure
+# ------------------------------------------------------------
 
 echo ""
 echo "⚠️ Download failed."
 echo "Checking for a newer yt-dlp version..."
 
-# Update only after a failed download.
 if "$YTDL" -U; then
     echo "✓ yt-dlp update check completed."
 else
-    echo "⚠️ yt-dlp could not be updated; continuing with the installed version."
+    echo "⚠️ yt-dlp could not be updated."
+    echo "Continuing with the installed version."
 fi
+
+# ------------------------------------------------------------
+# Second attempt after update
+# ------------------------------------------------------------
 
 echo ""
 echo "▶ Retrying..."
 
-# Second attempt: after updating yt-dlp.
 if run_yt_dlp "$@"; then
     exit 0
 fi
 
+# ------------------------------------------------------------
+# Final YouTube web-client fallback
+# ------------------------------------------------------------
+
 echo ""
 echo "⚠️ Standard retry failed."
-echo "▶ Retrying with YouTube web client..."
+echo "▶ Retrying with the YouTube web client..."
 
-# Final fallback.
 exec "$YTDL" \
-    --js-runtimes deno \
+    "${COMMON_ARGS[@]}" \
     --extractor-args "youtube:player_client=web" \
     "$@"
