@@ -8,10 +8,10 @@ if [[ ! -f "$YTDL" ]]; then
     exit 1
 fi
 
-if [[ "$#" -eq 0 ]]; then
+if [ "$#" -eq 0 ]; then
     read -r -p "Enter YouTube URL: " URL
 
-    if [[ -z "$URL" ]]; then
+    if [ -z "$URL" ]; then
         echo "Error: No URL provided" >&2
         exit 1
     fi
@@ -19,28 +19,47 @@ if [[ "$#" -eq 0 ]]; then
     set -- "$URL"
 fi
 
-echo "Downloading..."
+COMMON_ARGS=(
+    --js-runtimes deno
+    -S res,ext:mp4,m4a
+    --recode mp4
+    --no-part
+)
+
+echo "▶ Downloading..."
 
 if "$YTDL" \
-    --js-runtimes deno \
-    --paths "$OUTPUT_DIR" \
-    -S res,ext:mp4,m4a \
-    --recode mp4 \
-    --no-part \
+    "${COMMON_ARGS[@]}" \
     "$@"
 then
     exit 0
 fi
 
-echo "" >&2
-echo "Normal extraction failed; retrying with YouTube web client..." >&2
-echo "" >&2
+echo ""
+echo "⚠️ Download failed."
+echo "Checking for a newer yt-dlp version..."
+
+if "$YTDL" -U; then
+    echo "✓ yt-dlp update check completed."
+else
+    echo "⚠️ yt-dlp could not be updated; continuing with the installed version."
+fi
+
+echo ""
+echo "▶ Retrying..."
+
+if "$YTDL" \
+    "${COMMON_ARGS[@]}" \
+    "$@"
+then
+    exit 0
+fi
+
+echo ""
+echo "⚠️ Standard retry failed."
+echo "▶ Retrying with YouTube web client..."
 
 exec "$YTDL" \
-    --js-runtimes deno \
+    "${COMMON_ARGS[@]}" \
     --extractor-args "youtube:player_client=web" \
-    --paths "$OUTPUT_DIR" \
-    -S res,ext:mp4,m4a \
-    --recode mp4 \
-    --no-part \
     "$@"
