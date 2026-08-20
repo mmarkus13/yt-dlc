@@ -47,7 +47,6 @@ else
 
 fi
 
-# Make it available immediately in this installer process.
 export PATH="$HOME/scripts:$PATH"
 
 # ------------------------------------------------------------
@@ -123,7 +122,7 @@ else
     echo "FFmpeg is required for:"
     echo "  • MP3 extraction"
     echo "  • Merging separate video/audio streams"
-    echo "  • Various video/audio conversions"
+    echo "  • Video/audio conversion"
     echo ""
 
     read -r -p "Would you like to install FFmpeg now? [Y/n] " INSTALL_FFMPEG
@@ -182,7 +181,7 @@ else
 fi
 
 # ------------------------------------------------------------
-# Step 6: Download repository wrapper scripts
+# Step 6: Download repository scripts
 # ------------------------------------------------------------
 
 echo "[6/6] Installing wrapper scripts..."
@@ -209,10 +208,8 @@ echo ""
 echo "Activating shell configuration..."
 
 if [[ -f "$BASHRC" ]]; then
-
     # shellcheck disable=SC1090
     source "$BASHRC"
-
 fi
 
 export PATH="$HOME/scripts:$PATH"
@@ -226,6 +223,7 @@ echo "✓ Shell configuration loaded"
 echo ""
 echo "🎉 Installation complete!"
 echo ""
+
 echo "Installed:"
 echo "  yt                 → $SCRIPT_DIR/yt"
 echo "  ytmp3              → $SCRIPT_DIR/ytmp3"
@@ -245,10 +243,13 @@ echo '  yt "https://youtu.be/VIDEO_ID"'
 echo '  ytmp3 "https://youtu.be/MUSIC_ID"'
 echo ""
 
+echo "On first use, you will be asked whether you want"
+echo "to configure default video and music download directories."
+
+echo ""
 echo "If the commands are not available in a newly opened shell, run:"
 echo ""
 echo "  source ~/.bashrc"
 echo ""
-
 echo "See README.md for advanced options and troubleshooting."
 echo ""
