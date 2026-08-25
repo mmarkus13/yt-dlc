@@ -12,6 +12,7 @@
 set -e
 
 SCRIPT_DIR="$HOME/scripts"
+LOCAL_BIN="$HOME/.local/bin"
 BASHRC="$HOME/.bashrc"
 REPO_RAW="https://raw.githubusercontent.com/mmarkus13/yt-dlc/main"
 
@@ -19,14 +20,16 @@ echo "🎵 YouTube Downloader CLI Installer"
 echo "==================================="
 
 # ------------------------------------------------------------
-# Step 1: Create scripts directory
+# Step 1: Create user directories
 # ------------------------------------------------------------
 
-echo "[1/6] Creating $SCRIPT_DIR..."
+echo "[1/6] Creating user directories..."
 
 mkdir -p "$SCRIPT_DIR"
+mkdir -p "$LOCAL_BIN"
 
-echo "✓ Scripts directory ready"
+echo "✓ Scripts directory ready: $SCRIPT_DIR"
+echo "✓ Local bin directory ready: $LOCAL_BIN"
 
 # ------------------------------------------------------------
 # Step 2: Configure PATH
@@ -35,25 +38,40 @@ echo "✓ Scripts directory ready"
 echo "[2/6] Configuring PATH..."
 
 if [[ -f "$BASHRC" ]] &&
+   grep -Fqx 'export PATH="$HOME/.local/bin:$PATH"' "$BASHRC"; then
+
+    echo "✓ ~/.local/bin PATH already configured"
+
+else
+
+    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASHRC"
+
+    echo "✓ ~/.local/bin PATH configured"
+
+fi
+
+if [[ -f "$BASHRC" ]] &&
    grep -Fqx 'export PATH="$HOME/scripts:$PATH"' "$BASHRC"; then
 
-    echo "✓ PATH already configured"
+    echo "✓ ~/scripts PATH already configured"
 
 else
 
     echo 'export PATH="$HOME/scripts:$PATH"' >> "$BASHRC"
 
-    echo "✓ PATH configured"
+    echo "✓ ~/scripts PATH configured"
 
 fi
 
-export PATH="$HOME/scripts:$PATH"
+export PATH="$HOME/.local/bin:$HOME/scripts:$PATH"
 
 # ------------------------------------------------------------
 # Step 3: Install / configure Deno
 # ------------------------------------------------------------
 
 echo "[3/6] Checking Deno..."
+
+export DENO_INSTALL="$HOME/.deno"
 
 if command -v deno >/dev/null 2>&1; then
 
@@ -66,27 +84,29 @@ else
 
     curl -fsSL https://deno.land/install.sh | sh
 
-    export DENO_INSTALL="$HOME/.deno"
     export PATH="$DENO_INSTALL/bin:$PATH"
-
-    if [[ -f "$BASHRC" ]] &&
-       ! grep -Fqx 'export DENO_INSTALL="$HOME/.deno"' "$BASHRC"; then
-
-        echo 'export DENO_INSTALL="$HOME/.deno"' >> "$BASHRC"
-
-    fi
-
-    if [[ -f "$BASHRC" ]] &&
-       ! grep -Fqx 'export PATH="$DENO_INSTALL/bin:$PATH"' "$BASHRC"; then
-
-        echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> "$BASHRC"
-
-    fi
 
     echo "✓ Deno installed:"
     deno --version | head -n1
 
 fi
+
+if [[ -f "$BASHRC" ]] &&
+   ! grep -Fqx 'export DENO_INSTALL="$HOME/.deno"' "$BASHRC"; then
+
+    echo 'export DENO_INSTALL="$HOME/.deno"' >> "$BASHRC"
+
+fi
+
+if [[ -f "$BASHRC" ]] &&
+   ! grep -Fqx 'export PATH="$DENO_INSTALL/bin:$PATH"' "$BASHRC"; then
+
+    echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> "$BASHRC"
+
+fi
+
+# Ensure Deno is available in the current shell as well.
+export PATH="$DENO_INSTALL/bin:$PATH"
 
 # ------------------------------------------------------------
 # Step 4: Install yt-dlp
@@ -94,14 +114,16 @@ fi
 
 echo "[4/6] Installing yt-dlp..."
 
+mkdir -p "$LOCAL_BIN"
+
 curl -fsSL \
     "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
-    -o "$SCRIPT_DIR/yt-dlp"
+    -o "$LOCAL_BIN/yt-dlp"
 
-chmod +x "$SCRIPT_DIR/yt-dlp"
+chmod +x "$LOCAL_BIN/yt-dlp"
 
 echo "✓ yt-dlp installed:"
-"$SCRIPT_DIR/yt-dlp" --version
+"$LOCAL_BIN/yt-dlp" --version
 
 # ------------------------------------------------------------
 # Step 5: Check / optionally install FFmpeg
@@ -212,7 +234,7 @@ if [[ -f "$BASHRC" ]]; then
     source "$BASHRC"
 fi
 
-export PATH="$HOME/scripts:$PATH"
+export PATH="$HOME/.local/bin:$HOME/scripts:$DENO_INSTALL/bin:$PATH"
 
 echo "✓ Shell configuration loaded"
 
@@ -228,7 +250,13 @@ echo "Installed:"
 echo "  yt                 → $SCRIPT_DIR/yt"
 echo "  ytmp3              → $SCRIPT_DIR/ytmp3"
 echo "  yt-dlp-wrapper     → $SCRIPT_DIR/yt-dlp-wrapper"
-echo "  yt-dlp             → $SCRIPT_DIR/yt-dlp"
+echo "  yt-dlp             → $LOCAL_BIN/yt-dlp"
+
+if command -v deno >/dev/null 2>&1; then
+    echo "  deno               → $(command -v deno)"
+else
+    echo "  deno               → NOT INSTALLED"
+fi
 
 if command -v ffmpeg >/dev/null 2>&1; then
     echo "  ffmpeg             → $(command -v ffmpeg)"
