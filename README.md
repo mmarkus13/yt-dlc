@@ -1,16 +1,27 @@
-# 🎵 YouTube Downloader CLI
+# 🎵 yt-dlc
 
-A lightweight command-line YouTube downloader built around [yt-dlp](https://github.com/yt-dlp/yt-dlp), Deno, and FFmpeg.
+A lightweight Bash wrapper around [yt-dlp](https://github.com/yt-dlp/yt-dlp) for downloading YouTube videos and extracting audio as MP3.
 
-No GUI bloat, no complicated configuration — just a small set of wrapper scripts for downloading video and audio from the command line.
+The project provides two simple commands:
 
-> **Status:** Tested in August 2026 with yt-dlp `2026.07.04` and Deno `2.9.5`.
+```text
+yt
+ytmp3
+```
+
+Both commands use a shared wrapper:
+
+```text
+yt-dlp-wrapper
+```
+
+The wrapper adds persistent configuration, separate video/music destinations, transcript downloading, temporary-file handling, and an automatic YouTube extraction fallback while retaining normal yt-dlp command-line functionality.
 
 ---
 
 ## 🚀 Quick Install
 
-> **Install everything with a single command block:**
+> Install everything with a single command block:
 
 ```bash
 mkdir -p ~/scripts && cd ~/scripts && \
@@ -25,14 +36,18 @@ The installer will:
 - Create `~/scripts`
 - Add `~/scripts` to your shell `PATH`
 - Install Deno if it is not already installed
-- Download the latest official standalone yt-dlp binary
+- Download the latest official standalone yt-dlp binary to `~/.local/bin/yt-dlp`
 - Check for FFmpeg
 - Ask whether FFmpeg should be installed if it is missing
-- Download the version-controlled `yt` and `ytmp3` wrapper scripts
+- Download the version-controlled `yt`, `ytmp3`, and `yt-dlp-wrapper` scripts
 - Configure the appropriate shell startup file
 - Verify the installed components
 
-After installation, **reload your current shell once**:
+The actual `yt-dlp` executable is kept in `~/.local/bin` rather than `~/scripts`.
+
+The `~/scripts` directory is reserved for the user-facing commands and wrapper scripts.
+
+After installation, reload your current shell once:
 
 ```bash
 source ~/.bashrc
@@ -51,30 +66,35 @@ yt "https://youtu.be/VIDEO_ID"
 ytmp3 "https://youtu.be/MUSIC_ID"
 ```
 
-> 💡 **WSL:** The same Bash commands work on Windows 10 and 11 through [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/en-us/windows/wsl/install).
+> 💡 WSL: The same Bash commands work on Windows 10 and 11 through [Windows Subsystem for Linux (WSL)](https://learn.microsoft.com/windows/wsl/).
 
-> 💡 **SteamOS:** This setup can also be used on SteamOS. \
+> 💡 SteamOS: This setup can also be used on SteamOS. \
 > The installer detects SteamOS and handles FFmpeg installation separately because SteamOS uses a read-only system filesystem by default.
 
 ---
 
 ## ✨ Features
 
-| Feature | Description |
-|---|---|
-| **Video Download** | Downloads the best available video/audio and produces an MP4 when possible |
-| **Audio Extraction** | Extracts the best available audio and converts it to MP3 with FFmpeg |
-| **Interactive Mode** | Run the wrapper without arguments to prompt for a URL |
-| **Batch Downloads** | Download multiple individual URLs without creating a playlist |
-| **Batch Files** | Pass a text file containing multiple URLs directly to yt-dlp |
-| **Playlists** | Download individual videos or entire YouTube playlists |
-| **Mixed Inputs** | Combine individual URLs, playlists, and yt-dlp options |
-| **Automatic Fallback** | Retries failed extraction using YouTube's `web` player client |
-| **Resume Support** | Interrupted downloads can be retried |
-| **Cross-Platform** | Designed for Linux, macOS, WSL, and SteamOS |
-| **Minimal Setup** | Uses the official standalone yt-dlp binary |
-| **Customizable** | Standard yt-dlp options can be passed through the wrappers |
-| **CLI Workflow** | Designed for scripting, automation, and terminal use |
+Feature  | Description
+--- | ---
+Video Download  | Downloads the best available video/audio and produces an MP4 when possible
+Audio Extraction  | Extracts the best available audio and converts it to MP3 with FFmpeg
+Transcript Download | Optionally downloads available subtitles/transcripts for both video and MP3 downloads
+Transcript Fallback | Tries the configured subtitle language first, then attempts another available subtitle language
+Independent Transcript Download | Can download a missing transcript even when the media file already exists
+Interactive Configuration | Configure download directories, transcripts, overwrite behavior, delay, and geo-country interactively
+Configuration Display | Show the current wrapper configuration with `--show-config`
+Batch Downloads  | Download multiple individual URLs without creating a playlist
+Batch Files  | Pass a text file containing multiple URLs directly to yt-dlp
+Playlists  | Download individual videos or entire YouTube playlists
+Mixed Inputs  | Combine individual URLs, playlists, and yt-dlp options
+Automatic Fallback  | Retries failed extraction using YouTube's `web` player client
+Resume Support  | Interrupted downloads can be retried
+WSL-Friendly Temporary Files | Performs temporary download/merge work on the Linux filesystem instead of `/mnt/c`
+Cross-Platform  | Designed for Linux, macOS, WSL, and SteamOS
+Minimal Setup  | Uses the official standalone yt-dlp binary
+Customizable  | Standard yt-dlp options can be passed through the wrappers
+CLI Workflow  | Designed for scripting, automation, and terminal use
 
 ---
 
@@ -126,17 +146,33 @@ Then:
 python3 -m pip install -U "yt-dlp[default]"
 ```
 
-The `default` dependency group includes the appropriate `yt-dlp-ejs` package for the PyPI installation.
+The `default` dependency group includes the appropriate yt-dlp EJS package for the PyPI installation.
 
 > **Note:** Python 3.10 is not supported by this project's documented PyPI installation path. Use Python 3.11 or newer.
 
 ### Why Deno?
 
-yt-dlp uses an external JavaScript runtime to solve JavaScript challenges required for full YouTube extraction.
+yt-dlp uses JavaScript challenge-solving components for some YouTube extraction operations.
+
+The official standalone yt-dlp executable used by this project already contains the required EJS components.
+
+A supported external JavaScript runtime is still required to execute those components.
 
 Deno is the recommended JavaScript runtime for yt-dlp's YouTube support.
 
-The official standalone yt-dlp executables already contain the required EJS components, so this project does **not** separately install `yt-dlp-ejs`.
+Therefore:
+
+```text
+yt-dlp standalone binary
+        │
+        ├── bundled EJS components
+        │
+        └── external JavaScript runtime
+                    │
+                    └── Deno
+```
+
+This project does **not** separately install `yt-dlp-ejs` when using the official standalone yt-dlp binary.
 
 ---
 
@@ -190,24 +226,28 @@ If you use Zsh instead of Bash, add the environment variables to `~/.zshrc` inst
 Download the official standalone yt-dlp binary:
 
 ```bash
+mkdir -p "$HOME/.local/bin"
+
 curl -fsSL \
   "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp" \
-  -o "$HOME/scripts/yt-dlp"
+  -o "$HOME/.local/bin/yt-dlp"
 ```
 
 Make it executable:
 
 ```bash
-chmod +x "$HOME/scripts/yt-dlp"
+chmod +x "$HOME/.local/bin/yt-dlp"
 ```
 
 Verify:
 
 ```bash
-"$HOME/scripts/yt-dlp" --version
+"$HOME/.local/bin/yt-dlp" --version
 ```
 
 The standalone binary does not require Python.
+
+> The wrapper calls `~/.local/bin/yt-dlp` explicitly. Keeping the executable here separates the third-party downloader from the personal scripts in `~/scripts`.
 
 ---
 
@@ -254,7 +294,7 @@ ffmpeg -version
 
 If it is missing, SteamOS package installation may require temporarily disabling the read-only filesystem.
 
-The installer handles this automatically when possible.
+The installer handles this separately when possible.
 
 > **Important:** Packages installed into the SteamOS system filesystem may be affected by future SteamOS updates. Keep this in mind when using system-level package installation.
 
@@ -262,14 +302,19 @@ The installer handles this automatically when possible.
 
 ## 5. Install the Wrapper Scripts
 
-The repository contains two version-controlled wrapper scripts:
+The repository contains three version-controlled scripts:
 
 ```text
 yt
 ytmp3
+yt-dlp-wrapper
 ```
 
-These files are the **single source of truth** for the wrapper implementations.
+`yt` and `ytmp3` are the user-facing commands.
+
+`yt-dlp-wrapper` contains the shared implementation used by both commands.
+
+These files are the single source of truth for the wrapper implementation.
 
 ### Option A — Clone the Repository
 
@@ -284,14 +329,19 @@ git clone \
 Copy the wrapper scripts:
 
 ```bash
-cp "$HOME/yt-dlc/yt" "$HOME/scripts/yt"
-cp "$HOME/yt-dlc/ytmp3" "$HOME/scripts/ytmp3"
+cp "$HOME/yt-dlc/yt" \
+   "$HOME/yt-dlc/ytmp3" \
+   "$HOME/yt-dlc/yt-dlp-wrapper" \
+   "$HOME/scripts/"
 ```
 
 Make them executable:
 
 ```bash
-chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
+chmod +x \
+  "$HOME/scripts/yt" \
+  "$HOME/scripts/ytmp3" \
+  "$HOME/scripts/yt-dlp-wrapper"
 ```
 
 ### Option B — Download the Wrapper Scripts Directly
@@ -307,7 +357,14 @@ curl -fsSL \
   "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/ytmp3" \
   -o "$HOME/scripts/ytmp3"
 
-chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
+curl -fsSL \
+  "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/yt-dlp-wrapper" \
+  -o "$HOME/scripts/yt-dlp-wrapper"
+
+chmod +x \
+  "$HOME/scripts/yt" \
+  "$HOME/scripts/ytmp3" \
+  "$HOME/scripts/yt-dlp-wrapper"
 ```
 
 This installs only the wrapper scripts.
@@ -318,6 +375,8 @@ You must still install yt-dlp, Deno, FFmpeg, and configure `~/scripts` in your `
 
 ## 6. Add `~/scripts` to Your PATH
 
+The user-facing wrapper commands live in `~/scripts`.
+
 For Bash:
 
 ```bash
@@ -325,12 +384,19 @@ echo 'export PATH="$HOME/scripts:$PATH"' >> "$HOME/.bashrc"
 source "$HOME/.bashrc"
 ```
 
+`~/.local/bin` is normally already included in the PATH on standard Linux installations. If it is not, add it:
+
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+source "$HOME/.bashrc"
+```
+
 Verify:
 
 ```bash
-which yt
-which ytmp3
-which yt-dlp
+command -v yt
+command -v ytmp3
+command -v yt-dlp
 ```
 
 You should see paths similar to:
@@ -338,10 +404,10 @@ You should see paths similar to:
 ```text
 /home/yourname/scripts/yt
 /home/yourname/scripts/ytmp3
-/home/yourname/scripts/yt-dlp
+/home/yourname/.local/bin/yt-dlp
 ```
 
-> If the PATH entry already exists, do not add it again.
+> If a PATH entry already exists, do not add it again.
 
 ---
 
@@ -432,7 +498,13 @@ Comments and blank lines can be used in batch files where supported by yt-dlp.
 
 ## Download into a Specific Directory
 
-Change directories before running the command:
+The recommended way to permanently configure output directories is:
+
+```bash
+yt --configure
+```
+
+For a one-off download, you can also change to the desired directory before running the wrapper:
 
 ```bash
 cd "$HOME/Downloads"
@@ -446,13 +518,161 @@ cd "$HOME/Music"
 ytmp3 "https://youtu.be/MUSIC_ID"
 ```
 
+The persistent configuration described in the [Configuration](#configuration) section takes precedence for normal wrapper downloads.
+
+---
+
+# ⚙️ Configuration
+
+The wrapper stores its persistent configuration in:
+
+```text
+~/.config/yt-dlc/config
+```
+
+The configuration directory and file are created automatically when needed.
+
+### Show Current Configuration
+
+Run:
+
+```bash
+yt --show-config
+```
+
+The same command works through `ytmp3`:
+
+```bash
+ytmp3 --show-config
+```
+
+Example:
+
+```text
+Current download preferences
+-----------------------------
+  Video directory:        /path/to/videos
+  Music directory:        /path/to/music
+  Transcripts:             Yes (en)
+  Overwrite files:         No
+  Download delay:          0s
+  Geo country:             Not specified
+  Temporary files:         /home/yourname/.cache/yt-dlc/tmp
+```
+
+`--show-config` is a wrapper command. It is handled before anything is passed to yt-dlp.
+
+### Interactive Configuration
+
+Run:
+
+```bash
+yt --configure
+```
+
+The configuration wizard can set:
+
+- Video download directory
+- Music download directory
+- Whether transcripts should be downloaded
+- Preferred transcript language
+- Whether existing files may be overwritten
+- Download delay
+- Geo-country preference
+
+The resulting configuration is stored in:
+
+```text
+~/.config/yt-dlc/config
+```
+
+There is no need to create the directory manually.
+
+### Configuration File
+
+A typical configuration looks like:
+
+```bash
+VIDEO_DIR=/path/to/videos
+MUSIC_DIR=/path/to/music
+
+TRANSCRIPTS=yes
+TRANSCRIPT_LANG=en
+
+OVERWRITE=no
+DOWNLOAD_DELAY=''
+GEO_COUNTRY=''
+```
+
+The wrapper loads this configuration for every download.
+
+---
+
+# 📝 Transcripts
+
+Transcript downloading is controlled by:
+
+```text
+TRANSCRIPTS
+TRANSCRIPT_LANG
+```
+
+For example:
+
+```bash
+TRANSCRIPTS=yes
+TRANSCRIPT_LANG=en
+```
+
+When transcripts are enabled, both `yt` and `ytmp3` attempt to download available subtitles/transcripts.
+
+The wrapper uses this order:
+
+1. Try the configured language.
+2. If that language is unavailable, try another available subtitle language.
+3. If no subtitle can be downloaded, continue without failing the media download.
+
+If successful, the transcript is saved as a `.vtt` file next to the downloaded media.
+
+For example:
+
+```text
+Video Title [VIDEO_ID].mp4
+Video Title [VIDEO_ID].en.vtt
+```
+
+The transcript download is independent of the media download.
+
+For example, if the media file already exists but the transcript does not, running:
+
+```bash
+yt "https://youtu.be/VIDEO_ID"
+```
+
+can reuse the existing media file and still download the missing transcript.
+
+The same behavior applies to:
+
+```bash
+ytmp3 "https://youtu.be/MUSIC_ID"
+```
+
+If no transcript is available, the media download is still considered successful and the wrapper reports:
+
+```text
+ℹ️ No transcript was downloaded.
+```
+
+> `ytmp3` does not disable transcripts. \
+> This allows audio downloads to be accompanied by available subtitles when the source provides them.
+
 ---
 
 # 📚 Multiple Videos, Songs & Playlists
 
 You don't need to create a YouTube playlist to download multiple items.
 
-The wrappers pass all additional arguments through to yt-dlp.
+The wrappers pass standard yt-dlp arguments through to the downloader.
 
 ## Multiple Individual Videos
 
@@ -582,20 +802,56 @@ After installation, your home directory can look like this:
 ├── scripts/
 │   ├── yt
 │   ├── ytmp3
-│   └── yt-dlp
+│   └── yt-dlp-wrapper
 │
-├── Downloads/
-│   └── YouTube downloads
+├── .local/
+│   └── bin/
+│       └── yt-dlp
 │
-├── Music/
-│   └── MP3 downloads
+├── .config/
+│   └── yt-dlc/
+│       └── config
+│
+├── .cache/
+│   └── yt-dlc/
+│       └── tmp/
 │
 └── yt-dlc/
     ├── README.md
     ├── installer.sh
     ├── yt
-    └── ytmp3
+    ├── ytmp3
+    ├── yt-dlp-wrapper
+    └── uninstall.sh
 ```
+
+The repository directory is the project/source directory.
+
+The installed user-facing commands live in:
+
+```text
+~/scripts/
+```
+
+The standalone yt-dlp executable lives in:
+
+```text
+~/.local/bin/
+```
+
+Persistent configuration lives in:
+
+```text
+~/.config/yt-dlc/
+```
+
+Temporary download files live in:
+
+```text
+~/.cache/yt-dlc/tmp/
+```
+
+Downloaded media is stored separately according to the configured video and music directories.
 
 ---
 
@@ -666,6 +922,8 @@ which yt-dlp
 
 The official standalone yt-dlp binary used by this project already contains the required EJS components.
 
+Deno is used as the external JavaScript runtime.
+
 ---
 
 ## `no such option: --js-runtimes`
@@ -678,16 +936,28 @@ Update it:
 yt-dlp -U
 ```
 
-Or:
+Or explicitly:
 
 ```bash
-"$HOME/scripts/yt-dlp" -U
+"$HOME/.local/bin/yt-dlp" -U
 ```
 
 Then:
 
 ```bash
 yt-dlp --version
+```
+
+Check which executable is being used:
+
+```bash
+command -v yt-dlp
+```
+
+It should normally point to:
+
+```text
+/home/yourname/.local/bin/yt-dlp
 ```
 
 ---
@@ -808,27 +1078,43 @@ On SteamOS, see the [SteamOS Notes](#-steamos-notes) section.
 
 # 🧹 Cleaning Partial Downloads
 
-To find partial files in your home directory:
+The wrapper uses:
+
+```text
+~/.cache/yt-dlc/tmp
+```
+
+for temporary download and processing files.
+
+To inspect the temporary directory:
 
 ```bash
-find "$HOME" -type f \( \
+find "$HOME/.cache/yt-dlc/tmp" -type f -print
+```
+
+To find partial yt-dlp files there:
+
+```bash
+find "$HOME/.cache/yt-dlc/tmp" -type f \( \
   -name "*.part" \
+  -o -name "*.part-Frag*" \
   -o -name "*.ytdl" \
-  -o -name "*.temp" \
 \) -print
 ```
 
-To delete them:
+If necessary, remove them:
 
 ```bash
-find "$HOME" -type f \( \
+find "$HOME/.cache/yt-dlc/tmp" -type f \( \
   -name "*.part" \
+  -o -name "*.part-Frag*" \
   -o -name "*.ytdl" \
-  -o -name "*.temp" \
 \) -delete
 ```
 
-> Review the files first if you have other applications that use similarly named temporary files.
+Normally this should not be necessary after a successful download because yt-dlp cleans up its temporary working files.
+
+> Review the files first if you have an interrupted download that you intend to resume.
 
 ---
 
@@ -840,9 +1126,21 @@ Run:
 yt-dlp --version
 deno --version
 ffmpeg -version
-which yt
-which ytmp3
-which yt-dlp
+command -v yt
+command -v ytmp3
+command -v yt-dlp
+```
+
+Then display the wrapper configuration:
+
+```bash
+yt --show-config
+```
+
+Test the configuration wizard:
+
+```bash
+yt --configure
 ```
 
 Then test a video:
@@ -857,6 +1155,18 @@ And test audio extraction:
 ytmp3 "https://www.youtube.com/watch?v=BaW_jOozKJk"
 ```
 
+If transcripts are enabled, verify that a `.vtt` transcript is created alongside the downloaded media.
+
+Also verify that:
+
+```text
+~/.cache/yt-dlc/tmp
+```
+
+is used for temporary processing rather than the final Windows-mounted destination.
+
+Test an existing media file with a missing transcript to verify that the transcript can still be downloaded independently.
+
 ---
 
 # 🔄 Updating
@@ -869,10 +1179,16 @@ Because you're using the standalone binary:
 yt-dlp -U
 ```
 
-Or:
+Or explicitly:
 
 ```bash
-"$HOME/scripts/yt-dlp" -U
+"$HOME/.local/bin/yt-dlp" -U
+```
+
+Verify:
+
+```bash
+yt-dlp --version
 ```
 
 Keeping yt-dlp updated is particularly important because YouTube changes frequently.
@@ -906,7 +1222,14 @@ curl -fsSL \
   "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/ytmp3" \
   -o "$HOME/scripts/ytmp3"
 
-chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
+curl -fsSL \
+  "https://raw.githubusercontent.com/mmarkus13/yt-dlc/main/yt-dlp-wrapper" \
+  -o "$HOME/scripts/yt-dlp-wrapper"
+
+chmod +x \
+  "$HOME/scripts/yt" \
+  "$HOME/scripts/ytmp3" \
+  "$HOME/scripts/yt-dlp-wrapper"
 ```
 
 If you cloned the repository:
@@ -919,9 +1242,67 @@ git pull
 Then:
 
 ```bash
-cp yt ytmp3 "$HOME/scripts/"
-chmod +x "$HOME/scripts/yt" "$HOME/scripts/ytmp3"
+cp \
+  yt \
+  ytmp3 \
+  yt-dlp-wrapper \
+  "$HOME/scripts/"
+
+chmod +x \
+  "$HOME/scripts/yt" \
+  "$HOME/scripts/ytmp3" \
+  "$HOME/scripts/yt-dlp-wrapper"
 ```
+
+Your personal configuration in:
+
+```text
+~/.config/yt-dlc/config
+```
+
+is not replaced by updating the wrapper scripts.
+
+---
+
+# 📦 Temporary Download Files
+
+The wrapper uses:
+
+```text
+~/.cache/yt-dlc/tmp
+```
+
+for temporary download and processing files.
+
+The directory is created automatically when needed.
+
+### Why use the Linux filesystem?
+
+When running under WSL, downloading temporary files directly to `/mnt/c` can cause filesystem-related problems during operations such as renaming `.part` files or merging separate audio/video streams.
+
+The wrapper therefore performs temporary work under the native Linux filesystem:
+
+```text
+/home/yourname/.cache/yt-dlc/tmp
+```
+
+After processing is complete, the finished media and transcript files are moved to their configured destinations, which may be on the Windows filesystem.
+
+For example:
+
+```text
+YouTube
+   ↓
+~/.cache/yt-dlc/tmp
+   ↓
+configured video/music directory
+```
+
+yt-dlp normally removes its temporary working files after successful operations.
+
+The parent cache directory may remain and does not need to be manually removed.
+
+This directory is also removed by the project's `uninstall.sh` script.
 
 ---
 
@@ -950,6 +1331,27 @@ becomes:
 /mnt/c/Users/YourName/Music
 ```
 
+### Temporary Files Under WSL
+
+The wrapper intentionally keeps temporary download and processing files inside the Linux filesystem:
+
+```text
+~/.cache/yt-dlc/tmp
+```
+
+rather than under `/mnt/c`.
+
+This avoids common WSL filesystem issues during downloads, renames, merging, and conversion.
+
+The final files can still be stored on a Windows drive, for example:
+
+```text
+/mnt/c/Users/YourName/Videos
+/mnt/c/Users/YourName/Music
+```
+
+The wrapper moves completed files to their configured destinations after processing.
+
 ---
 
 # 🎮 SteamOS Notes
@@ -974,7 +1376,7 @@ If it is missing, the installer can ask whether you want it installed.
 
 The installer handles SteamOS separately and temporarily disables the read-only filesystem when package installation is required.
 
-> **Important:** System packages installed directly into the SteamOS root filesystem may be affected by future SteamOS updates.\
+> **Important:** System packages installed directly into the SteamOS root filesystem may be affected by future SteamOS updates.
 > User files under `$HOME` are preferable for persistent project files and scripts.
 
 ---
@@ -1027,49 +1429,107 @@ yt \
 
 # 🔧 Customization
 
-## Change the Default Output Directory
+## Change the Default Output Directories
 
-By default, downloads are saved in the current working directory.
+The wrapper supports separate persistent output directories for video and music.
+
+Run:
+
+```bash
+yt --configure
+```
+
+The configuration wizard can set:
+
+- Video download directory
+- Music download directory
+- Whether transcripts should be downloaded
+- Preferred transcript language
+- Whether existing files may be overwritten
+- Download delay
+- Geo-country preference
+
+The configuration is stored in:
+
+```text
+~/.config/yt-dlc/config
+```
 
 For example:
 
 ```bash
-cd "$HOME/Downloads"
-yt "https://youtu.be/VIDEO_ID"
+VIDEO_DIR=/mnt/c/Users/YourName/Videos/YT-dlg
+MUSIC_DIR=/mnt/c/Users/YourName/Music
 ```
 
-You can also configure a permanent output directory through an environment variable.
-
----
-
-## Use `YOUTUBE_DOWNLOAD_PATH`
-
-Add this to `~/.bashrc`:
-
-```bash
-export YOUTUBE_DOWNLOAD_PATH="$HOME/Downloads/youtube"
-```
-
-Create the directory:
-
-```bash
-mkdir -p "$HOME/Downloads/youtube"
-```
-
-Reload:
-
-```bash
-source "$HOME/.bashrc"
-```
-
-The wrappers will then use that directory automatically:
+After configuration:
 
 ```bash
 yt "https://youtu.be/VIDEO_ID"
+```
+
+downloads video to the configured video directory.
+
+Likewise:
+
+```bash
 ytmp3 "https://youtu.be/MUSIC_ID"
 ```
 
-The default remains the current working directory if `YOUTUBE_DOWNLOAD_PATH` is not set.
+downloads audio to the configured music directory.
+
+The configured destinations are independent of the current working directory.
+
+You can inspect the current settings at any time:
+
+```bash
+yt --show-config
+```
+
+The same command is available through `ytmp3`:
+
+```bash
+ytmp3 --show-config
+```
+
+The wrapper's persistent configuration controls its normal default behavior. Standard yt-dlp command-line options can still be passed for individual downloads where appropriate.
+
+---
+
+# 🗑️ Uninstall
+
+The project includes an `uninstall.sh` script that removes the files installed by this project.
+
+Run:
+
+```bash
+"$HOME/scripts/uninstall.sh"
+```
+
+The uninstaller removes:
+
+```text
+~/scripts/yt
+~/scripts/ytmp3
+~/scripts/yt-dlp-wrapper
+~/scripts/uninstall.sh
+~/.local/bin/yt-dlp
+~/.config/yt-dlc/
+~/.cache/yt-dlc/
+```
+
+It asks for confirmation before removing anything.
+
+Downloaded videos and music are **not** removed.
+
+The uninstaller does not remove:
+
+- `~/scripts` itself
+- `~/.local/bin` itself
+- `~/.config` itself
+- `~/.cache` itself
+- Any downloaded media
+- Other unrelated scripts or files
 
 ---
 
@@ -1133,38 +1593,66 @@ Possible improvements include:
 Verify that the installed commands are available:
 
 ```bash
-which yt
-which ytmp3
-which yt-dlp
-which deno
-which ffmpeg
+command -v yt
+command -v ytmp3
+command -v yt-dlp
+command -v deno
+command -v ffmpeg
 ```
 
-Then test the video wrapper:
+Expected locations include:
+
+```text
+~/scripts/yt
+~/scripts/ytmp3
+~/.local/bin/yt-dlp
+```
+
+Check the wrapper syntax:
+
+```bash
+bash -n "$HOME/scripts/yt-dlp-wrapper"
+bash -n "$HOME/scripts/yt"
+bash -n "$HOME/scripts/ytmp3"
+```
+
+A successful syntax check produces no output.
+
+Display the configuration:
+
+```bash
+yt --show-config
+```
+
+Test the configuration wizard:
+
+```bash
+yt --configure
+```
+
+Test a video:
 
 ```bash
 yt "https://youtu.be/VIDEO_ID"
 ```
 
-And the audio wrapper:
+Test audio extraction:
 
 ```bash
 ytmp3 "https://youtu.be/MUSIC_ID"
 ```
 
-Test multiple URLs:
+If transcripts are enabled, verify that a `.vtt` transcript is created alongside the downloaded media.
 
-```bash
-yt \
-  "https://youtu.be/VIDEO_ID_1" \
-  "https://youtu.be/VIDEO_ID_2"
+Also verify that:
+
+```text
+~/.cache/yt-dlc/tmp
 ```
 
-Test a batch file:
+is used for temporary processing rather than the final Windows-mounted destination.
 
-```bash
-yt --batch-file urls.txt
-```
+Test an existing media file with a missing transcript to verify that the transcript can still be downloaded independently.
 
 ---
 
@@ -1174,12 +1662,21 @@ yt --batch-file urls.txt
 - Keep Deno updated and use a currently supported version.
 - FFmpeg is required for many video/audio processing operations.
 - The official standalone yt-dlp binary does not require Python.
-- Python **3.11 or newer** is recommended for the optional PyPI installation path used by this project.
+- Python 3.11 or newer is recommended for the optional PyPI installation path used by this project.
 - Python 3.10 is not used or required by the normal installation.
 - A separate `pip install yt-dlp-ejs` is not required for the standalone-binary setup.
-- The `yt` and `ytmp3` wrapper scripts are maintained as files in this repository.
-- The installer downloads the repository versions of `yt` and `ytmp3`, avoiding duplicated wrapper implementations.
+- The actual yt-dlp executable is installed in `~/.local/bin/yt-dlp`.
+- The `yt`, `ytmp3`, and `yt-dlp-wrapper` scripts are maintained in this repository.
+- `~/scripts` contains the user-facing commands and wrapper scripts, not the yt-dlp executable itself.
+- Persistent wrapper configuration is stored in `~/.config/yt-dlc/config`.
+- Temporary download and processing files are stored in `~/.cache/yt-dlc/tmp`.
+- Temporary files are kept on the Linux filesystem under WSL to avoid `/mnt/c` filesystem issues.
+- Transcript downloading can be enabled independently of the selected media mode.
+- The configured transcript language is attempted first, followed by an available subtitle fallback.
+- A missing transcript does not cause an otherwise successful media download to fail.
 - The wrappers first use yt-dlp's normal client selection and retry with `player_client=web` when extraction fails.
+- The wrapper does not use the obsolete `YOUTUBE_DOWNLOAD_PATH` environment variable.
+- Output directories are configured through `VIDEO_DIR` and `MUSIC_DIR` using `yt --configure`.
 - Avoid relying on permanently hard-coded YouTube client workarounds.
 - Only download content you have the right to download and use.
 
