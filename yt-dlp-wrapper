@@ -1,233 +1,862 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -u
 
-YTDL="$HOME/scripts/yt-dlp"
+# ============================================================================
+# yt-dlp wrapper
+#
+# Commands:
+#
+#   yt URL
+#       Download video
+#
+#   ytmp3 URL
+#       Download audio as MP3
+#
+#   yt --show-config
+#       Show current configuration
+#
+#   yt --configure
+#       Configure the wrapper
+#
+# Configuration:
+#
+#   ~/.config/yt-dlc/config
+#
+# Temporary files:
+#
+#   ~/.cache/yt-dlc/tmp
+#
+# yt-dlp:
+#
+#   ~/.local/bin/yt-dlp
+# ============================================================================
+
+
+# ============================================================================
+# Paths
+# ============================================================================
+
 CONFIG_DIR="$HOME/.config/yt-dlc"
 CONFIG_FILE="$CONFIG_DIR/config"
 
-MODE=""
+CACHE_DIR="$HOME/.cache/yt-dlc"
+TMP_DIR="$CACHE_DIR/tmp"
 
-# ------------------------------------------------------------
-# Argument handling
-# ------------------------------------------------------------
+YT_DLP="$HOME/.local/bin/yt-dlp"
 
-if [[ "${1:-}" == "--mode" ]]; then
-    MODE="${2:-}"
-    shift 2
-fi
 
-case "$MODE" in
-    video|audio)
-        ;;
-    *)
-        echo "Error: yt-dlp-wrapper must be called through yt or ytmp3." >&2
-        exit 2
-        ;;
-esac
+# ============================================================================
+# Defaults
+# ============================================================================
 
-# ------------------------------------------------------------
-# Check yt-dlp
-# ------------------------------------------------------------
+VIDEO_DIR=""
+MUSIC_DIR=""
 
-if [[ ! -x "$YTDL" ]]; then
-    echo "Error: yt-dlp not found at $YTDL" >&2
-    exit 1
-fi
+TRANSCRIPTS="no"
+TRANSCRIPT_LANG="en"
 
-# ------------------------------------------------------------
-# Configuration
-# ------------------------------------------------------------
+OVERWRITE="no"
+DOWNLOAD_DELAY=""
+GEO_COUNTRY=""
 
-VIDEO_OUTPUT_DIR=""
-AUDIO_OUTPUT_DIR=""
+
+# ============================================================================
+# Utility functions
+# ============================================================================
+
+strip_quotes() {
+    local value="$1"
+
+    if [[ "$value" == \"*\" && "$value" == *\" ]]; then
+        value="${value:1:${#value}-2}"
+    elif [[ "$value" == \'*\' && "$value" == *\' ]]; then
+        value="${value:1:${#value}-2}"
+    fi
+
+    printf '%s' "$value"
+}
+
+
+ensure_directories() {
+    mkdir -p "$CONFIG_DIR"
+    mkdir -p "$TMP_DIR"
+}
+
 
 load_config() {
-    if [[ -f "$CONFIG_FILE" ]]; then
-        # shellcheck disable=SC1090
-        source "$CONFIG_FILE"
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        return 0
     fi
+
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+
+    VIDEO_DIR="${VIDEO_DIR:-}"
+    MUSIC_DIR="${MUSIC_DIR:-}"
+
+    TRANSCRIPTS="${TRANSCRIPTS:-no}"
+    TRANSCRIPT_LANG="${TRANSCRIPT_LANG:-en}"
+
+    OVERWRITE="${OVERWRITE:-no}"
+    DOWNLOAD_DELAY="${DOWNLOAD_DELAY:-}"
+    GEO_COUNTRY="${GEO_COUNTRY:-}"
+
+    VIDEO_DIR="$(strip_quotes "$VIDEO_DIR")"
+    MUSIC_DIR="$(strip_quotes "$MUSIC_DIR")"
+    TRANSCRIPT_LANG="$(strip_quotes "$TRANSCRIPT_LANG")"
+    DOWNLOAD_DELAY="$(strip_quotes "$DOWNLOAD_DELAY")"
+    GEO_COUNTRY="$(strip_quotes "$GEO_COUNTRY")"
 }
+
 
 save_config() {
-    mkdir -p "$CONFIG_DIR"
+    ensure_directories
 
-    {
-        printf '# yt-dlc download preferences\n'
-        printf '# This file can be edited manually.\n\n'
+    cat > "$CONFIG_FILE" <<EOF
+VIDEO_DIR=$(printf '%q' "$VIDEO_DIR")
+MUSIC_DIR=$(printf '%q' "$MUSIC_DIR")
 
-        printf 'VIDEO_OUTPUT_DIR=%q\n' "$VIDEO_OUTPUT_DIR"
-        printf 'AUDIO_OUTPUT_DIR=%q\n' "$AUDIO_OUTPUT_DIR"
-    } > "$CONFIG_FILE"
+TRANSCRIPTS=$(printf '%q' "$TRANSCRIPTS")
+TRANSCRIPT_LANG=$(printf '%q' "$TRANSCRIPT_LANG")
+
+OVERWRITE=$(printf '%q' "$OVERWRITE")
+DOWNLOAD_DELAY=$(printf '%q' "$DOWNLOAD_DELAY")
+GEO_COUNTRY=$(printf '%q' "$GEO_COUNTRY")
+EOF
 }
 
-configure_preferences() {
-    echo ""
-    echo "🎵 First-time setup"
-    echo ""
-    echo "Would you like to configure default download directories?"
-    echo ""
-    echo "If you choose No, downloads will use the current directory."
-    echo ""
 
-    read -r -p "Configure download directories? [y/N] " ANSWER
+# ============================================================================
+# Configuration display
+# ============================================================================
 
-    if [[ ! "$ANSWER" =~ ^[Yy]$ ]]; then
-        VIDEO_OUTPUT_DIR=""
-        AUDIO_OUTPUT_DIR=""
-        save_config
-        echo ""
-        echo "✓ Preferences saved. Downloads will use the current directory."
+show_config() {
+    echo
+    echo "Current download preferences"
+    echo "-----------------------------"
+
+    if [[ -n "$VIDEO_DIR" ]]; then
+        echo "  Video directory:        $VIDEO_DIR"
+    else
+        echo "  Video directory:        current directory"
+    fi
+
+    if [[ -n "$MUSIC_DIR" ]]; then
+        echo "  Music directory:        $MUSIC_DIR"
+    else
+        echo "  Music directory:        current directory"
+    fi
+
+    if [[ "$TRANSCRIPTS" == "yes" ]]; then
+        echo "  Transcripts:             Yes ($TRANSCRIPT_LANG)"
+    else
+        echo "  Transcripts:             No"
+    fi
+
+    if [[ "$OVERWRITE" == "yes" ]]; then
+        echo "  Overwrite files:         Yes"
+    else
+        echo "  Overwrite files:         No"
+    fi
+
+    if [[ -n "$DOWNLOAD_DELAY" ]]; then
+        echo "  Download delay:          ${DOWNLOAD_DELAY}s"
+    else
+        echo "  Download delay:          0s"
+    fi
+
+    if [[ -n "$GEO_COUNTRY" ]]; then
+        echo "  Geo country:             $GEO_COUNTRY"
+    else
+        echo "  Geo country:             Not specified"
+    fi
+
+    echo "  Temporary files:         $TMP_DIR"
+    echo
+}
+
+
+# ============================================================================
+# Interactive configuration
+# ============================================================================
+
+ask_yes_no() {
+    local prompt="$1"
+    local current="$2"
+    local answer
+
+    if [[ "$current" == "yes" ]]; then
+        prompt="$prompt [Y/n]"
+    else
+        prompt="$prompt [y/N]"
+    fi
+
+    read -r -p "$prompt " answer || return 1
+
+    answer="${answer:-}"
+
+    if [[ -z "$answer" ]]; then
+        [[ "$current" == "yes" ]]
         return
     fi
 
-    echo ""
-    echo "Video downloads"
-    echo "---------------"
-    read -r -p "Default video directory (leave blank for current directory): " VIDEO_OUTPUT_DIR
+    case "$answer" in
+        y|Y|yes|YES|Yes)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
 
-    if [[ -n "$VIDEO_OUTPUT_DIR" ]]; then
-        mkdir -p "$VIDEO_OUTPUT_DIR"
-        VIDEO_OUTPUT_DIR="$(cd "$VIDEO_OUTPUT_DIR" && pwd)"
+
+configure() {
+    echo
+    echo "🎵 yt-dlc configuration"
+    echo
+
+    # ------------------------------------------------------------------------
+    # Download directories
+    # ------------------------------------------------------------------------
+
+    echo "Download directories"
+    echo "--------------------"
+    echo
+
+    if ask_yes_no "Configure download directories?" "yes"; then
+
+        read -r -p \
+            "Video directory [${VIDEO_DIR:-current directory}]: " \
+            answer || return 1
+
+        if [[ -n "$answer" ]]; then
+            VIDEO_DIR="$(strip_quotes "$answer")"
+        fi
+
+        read -r -p \
+            "Music directory [${MUSIC_DIR:-current directory}]: " \
+            answer || return 1
+
+        if [[ -n "$answer" ]]; then
+            MUSIC_DIR="$(strip_quotes "$answer")"
+        fi
     fi
 
-    echo ""
-    echo "MP3 downloads"
-    echo "-------------"
-    read -r -p "Default music directory (leave blank for current directory): " AUDIO_OUTPUT_DIR
+    echo
 
-    if [[ -n "$AUDIO_OUTPUT_DIR" ]]; then
-        mkdir -p "$AUDIO_OUTPUT_DIR"
-        AUDIO_OUTPUT_DIR="$(cd "$AUDIO_OUTPUT_DIR" && pwd)"
+    # ------------------------------------------------------------------------
+    # Transcripts
+    # ------------------------------------------------------------------------
+
+    echo "Transcripts"
+    echo "-----------"
+
+    if ask_yes_no "Download video transcripts?" "$TRANSCRIPTS"; then
+        TRANSCRIPTS="yes"
+
+        read -r -p \
+            "Transcript language [$TRANSCRIPT_LANG]: " \
+            answer || return 1
+
+        if [[ -n "$answer" ]]; then
+            TRANSCRIPT_LANG="$(strip_quotes "$answer")"
+        fi
+    else
+        TRANSCRIPTS="no"
     fi
+
+    echo
+
+    # ------------------------------------------------------------------------
+    # Overwrite
+    # ------------------------------------------------------------------------
+
+    if ask_yes_no "Overwrite existing files?" "$OVERWRITE"; then
+        OVERWRITE="yes"
+    else
+        OVERWRITE="no"
+    fi
+
+    echo
+
+    # ------------------------------------------------------------------------
+    # Download delay
+    # ------------------------------------------------------------------------
+
+    read -r -p \
+        "Download delay in seconds [${DOWNLOAD_DELAY:-0}]: " \
+        answer || return 1
+
+    if [[ -n "$answer" ]]; then
+        DOWNLOAD_DELAY="$(strip_quotes "$answer")"
+    fi
+
+    echo
+
+    # ------------------------------------------------------------------------
+    # Geo country
+    # ------------------------------------------------------------------------
+
+    read -r -p \
+        "Geo country code [${GEO_COUNTRY:-none}]: " \
+        answer || return 1
+
+    if [[ -n "$answer" ]]; then
+        GEO_COUNTRY="$(strip_quotes "$answer")"
+    fi
+
+    echo
 
     save_config
 
-    echo ""
-    echo "✓ Download preferences saved to:"
+    echo "Configuration saved to:"
     echo "  $CONFIG_FILE"
+
+    show_config
 }
 
-load_config
 
-# First run: create preferences.
-if [[ ! -f "$CONFIG_FILE" ]]; then
-    configure_preferences
-fi
+# ============================================================================
+# VTT -> TXT conversion
+# ============================================================================
 
-# ------------------------------------------------------------
-# Determine output directory
-# ------------------------------------------------------------
+vtt_to_txt() {
+    local input="$1"
+    local output="$2"
 
-case "$MODE" in
-    video)
-        OUTPUT_DIR="${VIDEO_OUTPUT_DIR:-$PWD}"
-        ;;
-    audio)
-        OUTPUT_DIR="${AUDIO_OUTPUT_DIR:-$PWD}"
-        ;;
-esac
+    awk '
+        BEGIN {
+            IGNORECASE = 1
+            previous = ""
+        }
 
-# Ensure configured directory exists.
-mkdir -p "$OUTPUT_DIR"
+        # WEBVTT header
+        /^WEBVTT/ {
+            next
+        }
 
-# ------------------------------------------------------------
-# Build common yt-dlp arguments
-# ------------------------------------------------------------
+        # VTT metadata
+        /^Kind:/ {
+            next
+        }
 
-COMMON_ARGS=(
-    --js-runtimes deno
-    --no-part
-    -P "$OUTPUT_DIR"
-)
+        /^Language:/ {
+            next
+        }
 
-if [[ "$MODE" == "video" ]]; then
+        # NOTE blocks
+        /^NOTE([[:space:]]|$)/ {
+            in_note = 1
+            next
+        }
 
-    COMMON_ARGS+=(
-        -S "res,ext:mp4,m4a"
-        --recode mp4
-    )
+        in_note {
+            if ($0 == "") {
+                in_note = 0
+            }
+            next
+        }
 
-elif [[ "$MODE" == "audio" ]]; then
+        # Cue identifiers
+        /^[[:space:]]*[0-9]+$/ {
+            next
+        }
 
-    COMMON_ARGS+=(
-        --extract-audio
-        --audio-format mp3
-        --audio-quality 0
-    )
+        # Timestamp lines
+        /-->[[:space:]]/ {
+            next
+        }
 
-fi
+        # Empty lines
+        /^[[:space:]]*$/ {
+            next
+        }
 
-# ------------------------------------------------------------
-# Interactive URL mode
-# ------------------------------------------------------------
+        {
+            # Remove VTT/HTML formatting tags.
+            gsub(/<[^>]*>/, "", $0)
 
-if [[ "$#" -eq 0 ]]; then
+            # Decode common HTML entities.
+            gsub(/&amp;/,  "\\&", $0)
+            gsub(/&lt;/,   "<",   $0)
+            gsub(/&gt;/,   ">",   $0)
+            gsub(/&quot;/, "\"",  $0)
+            gsub(/&#39;/,  "\047", $0)
 
-    read -r -p "Enter YouTube URL: " URL
+            # Avoid duplicate consecutive subtitle lines.
+            if ($0 != previous) {
+                print
+                previous = $0
+            }
+        }
+    ' "$input" > "$output"
+}
 
-    if [[ -z "$URL" ]]; then
-        echo "Error: No URL provided" >&2
-        exit 1
+
+# ============================================================================
+# Find newest VTT in a directory
+# ============================================================================
+
+find_newest_vtt() {
+    local directory="$1"
+
+    find "$directory" \
+        -maxdepth 1 \
+        -type f \
+        -name '*.vtt' \
+        -printf '%T@ %p\n' 2>/dev/null |
+        sort -nr |
+        head -n1 |
+        cut -d' ' -f2-
+}
+
+
+# ============================================================================
+# Transcript download
+# ============================================================================
+
+download_transcript() {
+    local url="$1"
+    local output_dir="$2"
+
+    [[ "$TRANSCRIPTS" == "yes" ]] || return 0
+
+    echo
+    echo "📝 Downloading transcript..."
+
+    local output_template
+    local transcript_file
+    local txt_file
+    local status
+
+    output_template="$output_dir/%(title)s [%(id)s].%(ext)s"
+
+    # ------------------------------------------------------------------------
+    # First attempt:
+    #
+    # Specifically configured language.
+    # ------------------------------------------------------------------------
+
+    "$YT_DLP" \
+        --skip-download \
+        --write-subs \
+        --sub-langs "$TRANSCRIPT_LANG" \
+        --sub-format vtt \
+        --no-warnings \
+        --output "$output_template" \
+        "$url"
+
+    status=$?
+
+    transcript_file="$(find "$output_dir" \
+        -maxdepth 1 \
+        -type f \
+        -name "*.${TRANSCRIPT_LANG}.vtt" \
+        -printf '%T@ %p\n' 2>/dev/null |
+        sort -nr |
+        head -n1 |
+        cut -d' ' -f2-)"
+
+    if [[ "$status" -eq 0 &&
+          -n "$transcript_file" &&
+          -f "$transcript_file" ]]; then
+
+        txt_file="${transcript_file%.${TRANSCRIPT_LANG}.vtt}.txt"
+
+        if vtt_to_txt "$transcript_file" "$txt_file"; then
+            rm -f "$transcript_file"
+
+            echo "✅ Transcript downloaded ($TRANSCRIPT_LANG)."
+            return 0
+        fi
     fi
 
-    set -- "$URL"
+    echo "ℹ️ Transcript language '$TRANSCRIPT_LANG' unavailable."
+    echo "▶ Trying any available subtitle..."
 
-fi
+    # ------------------------------------------------------------------------
+    # Second attempt:
+    #
+    # Any uploaded subtitle.
+    # ------------------------------------------------------------------------
 
-# ------------------------------------------------------------
-# Download function
-# ------------------------------------------------------------
+    "$YT_DLP" \
+        --skip-download \
+        --write-subs \
+        --sub-langs "all" \
+        --sub-format vtt \
+        --no-warnings \
+        --output "$output_template" \
+        "$url"
 
-run_yt_dlp() {
-    "$YTDL" "${COMMON_ARGS[@]}" "$@"
+    status=$?
+
+    transcript_file="$(find_newest_vtt "$output_dir")"
+
+    if [[ "$status" -eq 0 &&
+          -n "$transcript_file" &&
+          -f "$transcript_file" ]]; then
+
+        txt_file="${transcript_file%.vtt}.txt"
+
+        if vtt_to_txt "$transcript_file" "$txt_file"; then
+            rm -f "$transcript_file"
+
+            echo "✅ Transcript downloaded."
+            return 0
+        fi
+    fi
+
+    echo "ℹ️ No uploaded subtitle available."
+    echo "▶ Trying any automatically generated subtitle..."
+
+    # ------------------------------------------------------------------------
+    # Third attempt:
+    #
+    # Any automatically generated subtitle.
+    # ------------------------------------------------------------------------
+
+    "$YT_DLP" \
+        --skip-download \
+        --write-auto-subs \
+        --sub-langs "all" \
+        --sub-format vtt \
+        --no-warnings \
+        --output "$output_template" \
+        "$url"
+
+    status=$?
+
+    transcript_file="$(find_newest_vtt "$output_dir")"
+
+    if [[ "$status" -eq 0 &&
+          -n "$transcript_file" &&
+          -f "$transcript_file" ]]; then
+
+        txt_file="${transcript_file%.vtt}.txt"
+
+        if vtt_to_txt "$transcript_file" "$txt_file"; then
+            rm -f "$transcript_file"
+
+            echo "✅ Transcript downloaded."
+            return 0
+        fi
+    fi
+
+    echo "ℹ️ No transcript was downloaded."
+
+    return 0
 }
 
-# ------------------------------------------------------------
-# First attempt
-# ------------------------------------------------------------
 
-echo "▶ Downloading..."
+# ============================================================================
+# yt-dlp update check
+# ============================================================================
 
-if run_yt_dlp "$@"; then
-    exit 0
-fi
+check_update() {
+    echo "Checking for a newer yt-dlp version..."
 
-# ------------------------------------------------------------
-# Update yt-dlp after failure
-# ------------------------------------------------------------
+    "$YT_DLP" -U
 
-echo ""
-echo "⚠️ Download failed."
-echo "Checking for a newer yt-dlp version..."
+    echo
+}
 
-if "$YTDL" -U; then
-    echo "✓ yt-dlp update check completed."
+
+# ============================================================================
+# Build common yt-dlp arguments
+# ============================================================================
+
+build_common_args() {
+    args=()
+
+    # ------------------------------------------------------------------------
+    # Output location
+    # ------------------------------------------------------------------------
+
+    if [[ "$MODE" == "mp3" ]]; then
+        if [[ -n "$MUSIC_DIR" ]]; then
+            args+=(--paths "$MUSIC_DIR")
+        fi
+    else
+        if [[ -n "$VIDEO_DIR" ]]; then
+            args+=(--paths "$VIDEO_DIR")
+        fi
+    fi
+
+    # ------------------------------------------------------------------------
+    # Temporary working directory
+    # ------------------------------------------------------------------------
+
+    args+=(--paths "temp:$TMP_DIR")
+
+    # ------------------------------------------------------------------------
+    # Output filename
+    # ------------------------------------------------------------------------
+
+    args+=(
+        --output "%(title)s [%(id)s].%(ext)s"
+    )
+
+    # ------------------------------------------------------------------------
+    # Overwrite behavior
+    # ------------------------------------------------------------------------
+
+    if [[ "$OVERWRITE" == "yes" ]]; then
+        args+=(--force-overwrites)
+    else
+        args+=(--no-overwrites)
+    fi
+
+    # ------------------------------------------------------------------------
+    # Download delay
+    # ------------------------------------------------------------------------
+
+    if [[ -n "$DOWNLOAD_DELAY" ]]; then
+        args+=(--sleep-interval "$DOWNLOAD_DELAY")
+    fi
+
+    # ------------------------------------------------------------------------
+    # Geo country
+    # ------------------------------------------------------------------------
+
+    if [[ -n "$GEO_COUNTRY" ]]; then
+        args+=(--geo-bypass-country "$GEO_COUNTRY")
+    fi
+
+    # ------------------------------------------------------------------------
+    # Video mode
+    # ------------------------------------------------------------------------
+
+    if [[ "$MODE" == "video" ]]; then
+
+        args+=(
+            --format "bestvideo*+bestaudio/best"
+            --merge-output-format mp4
+        )
+
+    # ------------------------------------------------------------------------
+    # MP3 mode
+    # ------------------------------------------------------------------------
+
+    elif [[ "$MODE" == "mp3" ]]; then
+
+        args+=(
+            --format "bestaudio/best"
+            --extract-audio
+            --audio-format mp3
+            --audio-quality 0
+        )
+    fi
+}
+
+
+# ============================================================================
+# Perform download
+# ============================================================================
+
+download() {
+    local url="$1"
+    local output_dir
+
+    if [[ "$MODE" == "mp3" ]]; then
+        output_dir="${MUSIC_DIR:-$(pwd)}"
+    else
+        output_dir="${VIDEO_DIR:-$(pwd)}"
+    fi
+
+    # Ensure destination exists when configured.
+    if [[ -n "$output_dir" ]]; then
+        mkdir -p "$output_dir"
+    fi
+
+    build_common_args
+
+    echo "▶ Downloading..."
+
+    "$YT_DLP" \
+        "${args[@]}" \
+        "$url"
+
+    local status=$?
+
+    if [[ "$status" -eq 0 ]]; then
+        download_transcript "$url" "$output_dir"
+        return 0
+    fi
+
+    echo
+    echo "⚠️ Download failed."
+
+    check_update
+
+    echo "▶ Retrying..."
+    echo
+
+    # ------------------------------------------------------------------------
+    # Standard retry
+    # ------------------------------------------------------------------------
+
+    "$YT_DLP" \
+        "${args[@]}" \
+        "$url"
+
+    status=$?
+
+    if [[ "$status" -eq 0 ]]; then
+        download_transcript "$url" "$output_dir"
+        return 0
+    fi
+
+    echo
+    echo "⚠️ Standard retry failed."
+    echo "▶ Retrying with the YouTube web client..."
+    echo
+
+    # ------------------------------------------------------------------------
+    # YouTube web-client retry
+    # ------------------------------------------------------------------------
+
+    "$YT_DLP" \
+        --extractor-args "youtube:player_client=web" \
+        "${args[@]}" \
+        "$url"
+
+    status=$?
+
+    if [[ "$status" -eq 0 ]]; then
+        download_transcript "$url" "$output_dir"
+        return 0
+    fi
+
+    echo
+    echo "❌ Download failed."
+
+    return "$status"
+}
+
+
+# ============================================================================
+# Argument parsing
+#
+# Launchers:
+#
+#   yt     -> yt-dlp-wrapper video ...
+#   ytmp3  -> yt-dlp-wrapper mp3 ...
+#
+# Wrapper-specific options are intercepted before yt-dlp is invoked.
+# ============================================================================
+
+MODE="${1:-}"
+
+if [[ "$MODE" == "video" || "$MODE" == "mp3" ]]; then
+    shift
 else
-    echo "⚠️ yt-dlp could not be updated."
-    echo "Continuing with the installed version."
+    case "$MODE" in
+
+        --show-config)
+            load_config
+            show_config
+            exit 0
+            ;;
+
+        --configure)
+            load_config
+            configure
+            exit 0
+            ;;
+
+        --help|-h)
+            echo
+            echo "Usage:"
+            echo "  yt URL"
+            echo "  ytmp3 URL"
+            echo "  yt --show-config"
+            echo "  yt --configure"
+            echo
+            exit 0
+            ;;
+
+        "")
+            echo
+            echo "Usage:"
+            echo "  yt URL"
+            echo "  ytmp3 URL"
+            echo "  yt --show-config"
+            echo "  yt --configure"
+            echo
+            exit 1
+            ;;
+
+        *)
+            echo "❌ Unknown mode: $MODE"
+            exit 1
+            ;;
+    esac
 fi
 
-# ------------------------------------------------------------
-# Second attempt after update
-# ------------------------------------------------------------
 
-echo ""
-echo "▶ Retrying..."
+# ============================================================================
+# Wrapper-specific options after MODE
+# ============================================================================
 
-if run_yt_dlp "$@"; then
-    exit 0
+case "${1:-}" in
+
+    --show-config)
+        load_config
+        show_config
+        exit 0
+        ;;
+
+    --configure)
+        load_config
+        configure
+        exit 0
+        ;;
+
+    --help|-h)
+        echo
+        echo "Usage:"
+        echo "  yt URL"
+        echo "  ytmp3 URL"
+        echo "  yt --show-config"
+        echo "  yt --configure"
+        echo
+        exit 0
+        ;;
+
+esac
+
+
+# ============================================================================
+# Load configuration
+# ============================================================================
+
+load_config
+ensure_directories
+
+
+# ============================================================================
+# URL
+# ============================================================================
+
+URL="${1:-}"
+
+if [[ -z "$URL" ]]; then
+    echo "❌ No URL specified."
+    echo
+    echo "Usage:"
+    echo "  yt URL"
+    echo "  ytmp3 URL"
+    exit 1
 fi
 
-# ------------------------------------------------------------
-# Final YouTube web-client fallback
-# ------------------------------------------------------------
 
-echo ""
-echo "⚠️ Standard retry failed."
-echo "▶ Retrying with the YouTube web client..."
+# ============================================================================
+# Execute
+# ============================================================================
 
-exec "$YTDL" \
-    "${COMMON_ARGS[@]}" \
-    --extractor-args "youtube:player_client=web" \
-    "$@"
+download "$URL"
+exit $?
+

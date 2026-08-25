@@ -1,3 +1,2 @@
-#!/bin/bash
-
-exec "$HOME/scripts/yt-dlp-wrapper" --mode audio "$@"
+#!/usr/bin/env bash
+exec "$HOME/scripts/yt-dlp-wrapper" mp3 "$@"
