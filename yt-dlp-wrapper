@@ -7,10 +7,10 @@ set -u
 #
 # Commands:
 #
-#   yt URL
+#   yt URL [URL ...]
 #       Download video
 #
-#   ytmp3 URL
+#   ytmp3 URL [URL ...]
 #       Download audio as MP3
 #
 #   yt --show-config
@@ -18,6 +18,11 @@ set -u
 #
 #   yt --configure
 #       Configure the wrapper
+#
+# Options:
+#
+#   --ignore-errors
+#       Continue downloading remaining URLs after a failure.
 #
 # Configuration:
 #
@@ -178,6 +183,35 @@ show_config() {
 
 
 # ============================================================================
+# Help
+# ============================================================================
+
+show_help() {
+    echo
+    echo "Usage:"
+    echo "  yt URL [URL ...]"
+    echo "  ytmp3 URL [URL ...]"
+    echo
+    echo "Options:"
+    echo "  --ignore-errors       Continue after failed downloads"
+    echo "  --show-config         Show current configuration"
+    echo "  --configure           Configure the wrapper"
+    echo "  --help, -h            Show this help"
+    echo
+    echo "URLs may be:"
+    echo "  dQw4w9WgXcQ"
+    echo "  youtu.be/dQw4w9WgXcQ"
+    echo "  https://youtu.be/dQw4w9WgXcQ"
+    echo
+    echo "Multiple URLs may be separated by spaces, commas, or semicolons:"
+    echo "  yt dQw4w9WgXcQ BaW_jOozKJk"
+    echo "  yt dQw4w9WgXcQ,BaW_jOozKJk"
+    echo "  yt 'dQw4w9WgXcQ;BaW_jOozKJk'"
+    echo
+}
+
+
+# ============================================================================
 # Interactive configuration
 # ============================================================================
 
@@ -332,12 +366,10 @@ vtt_to_txt() {
             previous = ""
         }
 
-        # WEBVTT header
         /^WEBVTT/ {
             next
         }
 
-        # VTT metadata
         /^Kind:/ {
             next
         }
@@ -346,7 +378,6 @@ vtt_to_txt() {
             next
         }
 
-        # NOTE blocks
         /^NOTE([[:space:]]|$)/ {
             in_note = 1
             next
@@ -359,33 +390,27 @@ vtt_to_txt() {
             next
         }
 
-        # Cue identifiers
         /^[[:space:]]*[0-9]+$/ {
             next
         }
 
-        # Timestamp lines
         /-->[[:space:]]/ {
             next
         }
 
-        # Empty lines
         /^[[:space:]]*$/ {
             next
         }
 
         {
-            # Remove VTT/HTML formatting tags.
             gsub(/<[^>]*>/, "", $0)
 
-            # Decode common HTML entities.
             gsub(/&amp;/,  "\\&", $0)
             gsub(/&lt;/,   "<",   $0)
             gsub(/&gt;/,   ">",   $0)
             gsub(/&quot;/, "\"",  $0)
             gsub(/&#39;/,  "\047", $0)
 
-            # Avoid duplicate consecutive subtitle lines.
             if ($0 != previous) {
                 print
                 previous = $0
@@ -653,7 +678,12 @@ build_common_args() {
 
 
 # ============================================================================
-# Perform download
+# Perform a single download
+#
+# Returns:
+#
+#   0  success
+#   non-zero  failure
 # ============================================================================
 
 download() {
@@ -740,12 +770,19 @@ download() {
 # ============================================================================
 # Argument parsing
 #
-# Launchers:
+# Rules:
 #
-#   yt     -> yt-dlp-wrapper video ...
-#   ytmp3  -> yt-dlp-wrapper mp3 ...
+#   --something
+#       Wrapper option
 #
-# Wrapper-specific options are intercepted before yt-dlp is invoked.
+#   anything else
+#       URL / video ID
+#
+# URL inputs may be separated by:
+#
+#   spaces
+#   commas
+#   semicolons
 # ============================================================================
 
 MODE="${1:-}"
@@ -753,80 +790,80 @@ MODE="${1:-}"
 if [[ "$MODE" == "video" || "$MODE" == "mp3" ]]; then
     shift
 else
-    case "$MODE" in
-
-        --show-config)
-            load_config
-            show_config
-            exit 0
-            ;;
-
-        --configure)
-            load_config
-            configure
-            exit 0
-            ;;
-
-        --help|-h)
-            echo
-            echo "Usage:"
-            echo "  yt URL"
-            echo "  ytmp3 URL"
-            echo "  yt --show-config"
-            echo "  yt --configure"
-            echo
-            exit 0
-            ;;
-
-        "")
-            echo
-            echo "Usage:"
-            echo "  yt URL"
-            echo "  ytmp3 URL"
-            echo "  yt --show-config"
-            echo "  yt --configure"
-            echo
-            exit 1
-            ;;
-
-        *)
-            echo "❌ Unknown mode: $MODE"
-            exit 1
-            ;;
-    esac
+    MODE="video"
 fi
 
 
 # ============================================================================
-# Wrapper-specific options after MODE
+# Wrapper options and URL collection
 # ============================================================================
 
-case "${1:-}" in
+IGNORE_ERRORS="no"
+URL_INPUTS=()
 
-    --show-config)
-        load_config
-        show_config
+
+for arg in "$@"; do
+
+    # ------------------------------------------------------------------------
+    # Anything beginning with "--" is a wrapper option.
+    # ------------------------------------------------------------------------
+
+    if [[ "$arg" == --* ]]; then
+
+        case "$arg" in
+
+            --ignore-errors)
+                IGNORE_ERRORS="yes"
+                ;;
+
+            --show-config)
+                load_config
+                show_config
+                exit 0
+                ;;
+
+            --configure)
+                load_config
+                configure
+                exit 0
+                ;;
+
+            --help)
+                show_help
+                exit 0
+                ;;
+
+            *)
+                echo "❌ Unknown option: $arg"
+                echo
+                show_help
+                exit 1
+                ;;
+
+        esac
+
+        continue
+    fi
+
+    # ------------------------------------------------------------------------
+    # Anything else is URL input.
+    # ------------------------------------------------------------------------
+
+    URL_INPUTS+=("$arg")
+
+done
+
+
+# ============================================================================
+# Short help option
+# ============================================================================
+
+for arg in "${URL_INPUTS[@]}"; do
+    if [[ "$arg" == "-h" ]]; then
+        show_help
         exit 0
-        ;;
-
-    --configure)
-        load_config
-        configure
-        exit 0
-        ;;
-
-    --help|-h)
-        echo
-        echo "Usage:"
-        echo "  yt URL"
-        echo "  ytmp3 URL"
-        echo "  yt --show-config"
-        echo "  yt --configure"
-        echo
-        exit 0
-        ;;
-
-esac
+    fi
+done
 
 
 # ============================================================================
@@ -838,25 +875,170 @@ ensure_directories
 
 
 # ============================================================================
-# URL
+# Expand and normalize URL input
 # ============================================================================
 
-URL="${1:-}"
+URLS=()
 
-if [[ -z "$URL" ]]; then
-    echo "❌ No URL specified."
+for input in "${URL_INPUTS[@]}"; do
+
+    # ------------------------------------------------------------------------
+    # Allow comma and semicolon delimiters inside a single argument.
+    #
+    # Spaces are already handled by the shell as separate arguments.
+    # ------------------------------------------------------------------------
+
+    input="${input//,/ }"
+    input="${input//;/ }"
+
+    # ------------------------------------------------------------------------
+    # Split resulting string on whitespace.
+    # ------------------------------------------------------------------------
+
+    read -r -a parts <<< "$input"
+
+    for part in "${parts[@]}"; do
+
+        [[ -z "$part" ]] && continue
+
+        # ------------------------------------------------------------
+        # Bare YouTube video ID
+        # ------------------------------------------------------------
+
+        if [[ "$part" =~ ^[A-Za-z0-9_-]{11}$ ]]; then
+            URLS+=("https://youtu.be/$part")
+            continue
+        fi
+
+        # ------------------------------------------------------------
+        # youtu.be/<ID>
+        # ------------------------------------------------------------
+
+        if [[ "$part" =~ ^youtu\.be/([A-Za-z0-9_-]{11})$ ]]; then
+            URLS+=("https://$part")
+            continue
+        fi
+
+        # ------------------------------------------------------------
+        # http(s)://youtu.be/<ID>
+        # ------------------------------------------------------------
+
+        if [[ "$part" =~ ^https?://youtu\.be/([A-Za-z0-9_-]{11}) ]]; then
+            URLS+=("$part")
+            continue
+        fi
+
+        # ------------------------------------------------------------
+        # Other HTTP(S) URLs
+        #
+        # Keep these intact and let yt-dlp determine whether it supports
+        # them.
+        # ------------------------------------------------------------
+
+        if [[ "$part" =~ ^https?:// ]]; then
+            URLS+=("$part")
+            continue
+        fi
+
+        # ------------------------------------------------------------
+        # Reject anything that does not resemble a URL or video ID.
+        # ------------------------------------------------------------
+
+        echo "⚠️ Ignoring invalid URL/input: $part"
+
+    done
+
+done
+
+
+# ============================================================================
+# Validate URLs
+# ============================================================================
+
+if [[ "${#URLS[@]}" -eq 0 ]]; then
     echo
-    echo "Usage:"
-    echo "  yt URL"
-    echo "  ytmp3 URL"
+    echo "❌ No valid URLs specified."
+    echo
+    show_help
     exit 1
 fi
 
 
 # ============================================================================
-# Execute
+# Execute batch
 # ============================================================================
 
-download "$URL"
-exit $?
+SUCCESSFUL=0
+FAILED=0
+FAILED_URLS=()
+
+
+for URL in "${URLS[@]}"; do
+
+    echo
+    echo "▶ Downloading: $URL"
+
+    if download "$URL"; then
+
+        SUCCESSFUL=$((SUCCESSFUL + 1))
+
+    else
+
+        FAILED=$((FAILED + 1))
+        FAILED_URLS+=("$URL")
+
+        if [[ "$IGNORE_ERRORS" == "yes" ]]; then
+
+            echo "⚠️ Download failed."
+            echo "ℹ️ Ignoring error and continuing..."
+
+        else
+
+            echo
+            echo "❌ Download failed: $URL"
+            echo
+            echo "⚠️ Batch stopped because --ignore-errors was not specified."
+
+            exit 1
+
+        fi
+
+    fi
+
+done
+
+
+# ============================================================================
+# Batch summary
+# ============================================================================
+
+echo
+echo "────────────────────────────────────────"
+echo "Batch completed."
+printf '   Successful: %d\n' "$SUCCESSFUL"
+printf '   Failed:     %d\n' "$FAILED"
+
+
+if [[ "$FAILED" -gt 0 ]]; then
+
+    echo
+    echo "Failed URLs:"
+
+    for URL in "${FAILED_URLS[@]}"; do
+        echo "  - $URL"
+    done
+
+    if [[ "$IGNORE_ERRORS" == "yes" ]]; then
+        echo
+        echo "⚠️ Errors were ignored; batch processing continued."
+    fi
+
+    exit 1
+fi
+
+
+echo
+echo "✅ All downloads completed successfully."
+
+exit 0
 
