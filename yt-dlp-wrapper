@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 
 set -u
-
 # ============================================================================
 # yt-dlp wrapper
 #
@@ -301,7 +300,6 @@ configure() {
     echo
 
     if ask_yes_no "Configure download directories?" "yes"; then
-
         read -e -r -p \
             "Video directory [${VIDEO_DIR:-current directory}]: " \
             answer || return 1
@@ -425,16 +423,106 @@ vtt_to_txt() {
 
 
 # ============================================================================
-# Find newest VTT
+# Select a subtitle language from yt-dlp --list-subs output
+#
+# Arguments:
+#   $1 = captured --list-subs output
+#   $2 = section: "uploaded" or "auto"
+#
+# Selection priority:
+#   1. configured transcript language
+#   2. English
+#   3. first available language
+#
+# This intentionally selects only ONE language. The wrapper must never use
+# --sub-langs all for its "find any transcript" fallback because that can
+# trigger a very large number of subtitle requests and HTTP 429 responses.
 # ============================================================================
 
-find_newest_vtt() {
+select_subtitle_language() {
+    local listing="$1"
+    local section="$2"
+
+    printf '%s\n' "$listing" | awk \
+        -v section="$section" \
+        -v target="$TRANSCRIPT_LANG" '
+        BEGIN {
+            active = 0
+            found_target = ""
+            found_english = ""
+            first = ""
+        }
+
+        /Available subtitles for/ {
+            active = (section == "uploaded")
+            next
+        }
+
+        /Available automatic captions for/ {
+            active = (section == "auto")
+            next
+        }
+
+        active &&
+        /^[[:space:]]*[A-Za-z0-9][A-Za-z0-9_-]*[[:space:]]+/ {
+
+            lang = $1
+
+            # Skip the table header.
+            if (lang == "Language") {
+                next
+            }
+
+            # Only accept actual subtitle rows. This prevents lines such as
+            # "VIDEO_ID has no subtitles" from being treated as a language.
+            if ($0 !~ /[[:space:]](vtt|srt|ttml|srv3|srv2|srv1|json3)([[:space:]]|$)/) {
+                next
+            }
+
+            if (first == "") {
+                first = lang
+            }
+
+            if (lang == target && found_target == "") {
+                found_target = lang
+            }
+
+            if (lang == "en" && found_english == "") {
+                found_english = lang
+            }
+        }
+
+        END {
+            if (found_target != "") {
+                print found_target
+            } else if (found_english != "") {
+                print found_english
+            } else if (first != "") {
+                print first
+            }
+        }
+    '
+}
+
+
+# ============================================================================
+# Find a VTT belonging to a specific subtitle language
+#
+# The previous implementation searched for the newest VTT in the directory.
+# That could accidentally select an unrelated existing transcript.
+#
+# Knowing the language lets us restrict the search to the file produced by
+# the current subtitle request.
+# ============================================================================
+
+find_transcript_vtt() {
     local directory="$1"
+    local language="$2"
 
     find "$directory" \
         -maxdepth 1 \
         -type f \
-        -name '*.vtt' \
+        -name "*.${language}.vtt" \
         -printf '%T@ %p\n' 2>/dev/null |
         sort -nr |
         head -n1 |
@@ -444,6 +532,22 @@ find_newest_vtt() {
 
 # ============================================================================
 # Transcript download
+#
+# Transcript strategy:
+#
+#   1. Try the configured language as an uploaded subtitle.
+#   2. Discover available subtitles with --list-subs.
+#   3. If another uploaded subtitle exists, select ONE language and try it.
+#   4. If no uploaded subtitle exists, select ONE automatic caption language.
+#   5. Convert the resulting VTT to TXT.
+#
+# Important:
+#
+#   --sub-langs all is deliberately NOT used here.
+#
+#   yt-dlp's --sub-langs all can cause a large number of subtitle downloads.
+#   On YouTube this can result in HTTP 429 responses before the useful
+#   transcript is ever downloaded.
 # ============================================================================
 
 download_transcript() {
@@ -459,8 +563,14 @@ download_transcript() {
     local transcript_file
     local txt_file
     local status
+    local listing
+    local selected_lang
 
     output_template="$output_dir/%(title)s [%(id)s].%(ext)s"
+
+    # ------------------------------------------------------------------------
+    # First attempt: configured language, uploaded subtitles
+    # ------------------------------------------------------------------------
 
     "$YT_DLP" \
         --skip-download \
@@ -473,14 +583,9 @@ download_transcript() {
 
     status=$?
 
-    transcript_file="$(find "$output_dir" \
-        -maxdepth 1 \
-        -type f \
-        -name "*.${TRANSCRIPT_LANG}.vtt" \
-        -printf '%T@ %p\n' 2>/dev/null |
-        sort -nr |
-        head -n1 |
-        cut -d' ' -f2-)"
+    transcript_file="$(find_transcript_vtt \
+        "$output_dir" \
+        "$TRANSCRIPT_LANG")"
 
     if [[ "$status" -eq 0 &&
           -n "$transcript_file" &&
@@ -496,41 +601,79 @@ download_transcript() {
     fi
 
     echo "ℹ️ Transcript language '$TRANSCRIPT_LANG' unavailable."
-    echo "▶ Trying any available subtitle..."
+    echo "▶ Checking available subtitles..."
 
-    "$YT_DLP" \
-        --skip-download \
-        --write-subs \
-        --sub-langs "all" \
-        --sub-format vtt \
+    # ------------------------------------------------------------------------
+    # Discover available uploaded and automatic subtitles once.
+    #
+    # --list-subs does not download the subtitle files. It gives us the
+    # available language lists so that we can select exactly one language.
+    # ------------------------------------------------------------------------
+
+    listing="$("$YT_DLP" \
+        --list-subs \
         --no-warnings \
-        --output "$output_template" \
-        "$url"
+        "$url" 2>&1)"
 
-    status=$?
+    # ------------------------------------------------------------------------
+    # Uploaded subtitle fallback
+    # ------------------------------------------------------------------------
 
-    transcript_file="$(find_newest_vtt "$output_dir")"
+    selected_lang="$(select_subtitle_language "$listing" "uploaded")"
 
-    if [[ "$status" -eq 0 &&
-          -n "$transcript_file" &&
-          -f "$transcript_file" ]]; then
+    if [[ -n "$selected_lang" ]]; then
+        echo "▶ Trying uploaded subtitle: $selected_lang"
 
-        txt_file="${transcript_file%.vtt}.txt"
+        "$YT_DLP" \
+            --skip-download \
+            --write-subs \
+            --sub-langs "$selected_lang" \
+            --sub-format vtt \
+            --no-warnings \
+            --output "$output_template" \
+            "$url"
 
-        if vtt_to_txt "$transcript_file" "$txt_file"; then
-            rm -f "$transcript_file"
-            echo "✅ Transcript downloaded."
-            return 0
+        status=$?
+
+        transcript_file="$(find_transcript_vtt \
+            "$output_dir" \
+            "$selected_lang")"
+
+        if [[ "$status" -eq 0 &&
+              -n "$transcript_file" &&
+              -f "$transcript_file" ]]; then
+
+            txt_file="${transcript_file%.${selected_lang}.vtt}.txt"
+
+            if vtt_to_txt "$transcript_file" "$txt_file"; then
+                rm -f "$transcript_file"
+                echo "✅ Transcript downloaded ($selected_lang)."
+                return 0
+            fi
         fi
     fi
 
-    echo "ℹ️ No uploaded subtitle available."
-    echo "▶ Trying any automatically generated subtitle..."
+    echo "ℹ️ No usable uploaded subtitle available."
+    echo "▶ Trying automatically generated subtitle..."
+
+    # ------------------------------------------------------------------------
+    # Automatic caption fallback
+    # ------------------------------------------------------------------------
+
+    selected_lang="$(select_subtitle_language "$listing" "auto")"
+
+    if [[ -z "$selected_lang" ]]; then
+        echo "ℹ️ No automatically generated subtitle available."
+        echo "ℹ️ No transcript was downloaded."
+        return 0
+    fi
+
+    echo "▶ Trying automatically generated subtitle: $selected_lang"
 
     "$YT_DLP" \
         --skip-download \
         --write-auto-subs \
-        --sub-langs "all" \
+        --sub-langs "$selected_lang" \
         --sub-format vtt \
         --no-warnings \
         --output "$output_template" \
@@ -538,17 +681,19 @@ download_transcript() {
 
     status=$?
 
-    transcript_file="$(find_newest_vtt "$output_dir")"
+    transcript_file="$(find_transcript_vtt \
+        "$output_dir" \
+        "$selected_lang")"
 
     if [[ "$status" -eq 0 &&
           -n "$transcript_file" &&
           -f "$transcript_file" ]]; then
 
-        txt_file="${transcript_file%.vtt}.txt"
+        txt_file="${transcript_file%.${selected_lang}.vtt}.txt"
 
         if vtt_to_txt "$transcript_file" "$txt_file"; then
             rm -f "$transcript_file"
-            echo "✅ Transcript downloaded."
+            echo "✅ Transcript downloaded ($selected_lang)."
             return 0
         fi
     fi
@@ -676,6 +821,7 @@ is_wrapper_option() {
         --ignore-errors|--show-config|--configure|--help)
             return 0
             ;;
+
         *)
             return 1
             ;;
@@ -951,6 +1097,7 @@ for arg in "$@"; do
 
     esac
 
+
     # ------------------------------------------------------------------------
     # Explicit end-of-options marker
     # ------------------------------------------------------------------------
@@ -959,6 +1106,7 @@ for arg in "$@"; do
         USER_YTDLP_ARGS+=("$arg")
         continue
     fi
+
 
     # ------------------------------------------------------------------------
     # Bare YouTube video ID
@@ -972,6 +1120,7 @@ for arg in "$@"; do
         URL_INPUTS+=("$arg")
         continue
     fi
+
 
     # ------------------------------------------------------------------------
     # Long-form yt-dlp option
@@ -1009,6 +1158,7 @@ for arg in "$@"; do
         continue
     fi
 
+
     # ------------------------------------------------------------------------
     # Short options are intentionally rejected.
     #
@@ -1028,6 +1178,7 @@ for arg in "$@"; do
         exit 1
     fi
 
+
     # ------------------------------------------------------------------------
     # URLs
     # ------------------------------------------------------------------------
@@ -1038,6 +1189,7 @@ for arg in "$@"; do
         URL_INPUTS+=("$arg")
         continue
     fi
+
 
     # ------------------------------------------------------------------------
     # Anything else at this point is invalid.
@@ -1142,7 +1294,6 @@ for (( INDEX=0; INDEX<TOTAL; INDEX++ )); do
         FAILED_URLS+=("$URL")
 
         if [[ "$IGNORE_ERRORS" == "yes" ]]; then
-
             echo "⚠️ Download failed."
             echo "ℹ️ Ignoring error and continuing..."
 
@@ -1154,7 +1305,6 @@ for (( INDEX=0; INDEX<TOTAL; INDEX++ )); do
             echo "⚠️ Batch stopped because --ignore-errors was not specified."
 
             exit 1
-
         fi
     fi
 
@@ -1172,6 +1322,7 @@ done
 echo
 echo "────────────────────────────────────────"
 echo "Batch completed."
+
 printf '   Successful: %d\n' "$SUCCESSFUL"
 printf '   Failed:     %d\n' "$FAILED"
 
