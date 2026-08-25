@@ -302,7 +302,7 @@ configure() {
 
     if ask_yes_no "Configure download directories?" "yes"; then
 
-        read -r -p \
+        read -e -r -p \
             "Video directory [${VIDEO_DIR:-current directory}]: " \
             answer || return 1
 
@@ -310,7 +310,7 @@ configure() {
             VIDEO_DIR="$(strip_quotes "$answer")"
         fi
 
-        read -r -p \
+        read -e -r -p \
             "Music directory [${MUSIC_DIR:-current directory}]: " \
             answer || return 1
 
@@ -327,7 +327,7 @@ configure() {
     if ask_yes_no "Download video transcripts?" "$TRANSCRIPTS"; then
         TRANSCRIPTS="yes"
 
-        read -r -p \
+        read -e -r -p \
             "Transcript language [$TRANSCRIPT_LANG]: " \
             answer || return 1
 
