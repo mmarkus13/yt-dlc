@@ -20,16 +20,16 @@ echo "🎵 YouTube Downloader CLI Installer"
 echo "==================================="
 
 # ------------------------------------------------------------
-# Step 1: Create user directories
+# Step 1: Create required directories
 # ------------------------------------------------------------
 
-echo "[1/6] Creating user directories..."
+echo "[1/6] Creating directories..."
 
 mkdir -p "$SCRIPT_DIR"
 mkdir -p "$LOCAL_BIN"
 
-echo "✓ Scripts directory ready: $SCRIPT_DIR"
-echo "✓ Local bin directory ready: $LOCAL_BIN"
+echo "✓ Scripts directory: $SCRIPT_DIR"
+echo "✓ Local binary directory: $LOCAL_BIN"
 
 # ------------------------------------------------------------
 # Step 2: Configure PATH
@@ -37,41 +37,37 @@ echo "✓ Local bin directory ready: $LOCAL_BIN"
 
 echo "[2/6] Configuring PATH..."
 
-if [[ -f "$BASHRC" ]] &&
-   grep -Fqx 'export PATH="$HOME/.local/bin:$PATH"' "$BASHRC"; then
+PATH_ENTRIES=(
+    'export PATH="$HOME/scripts:$PATH"'
+    'export PATH="$HOME/.local/bin:$PATH"'
+)
 
-    echo "✓ ~/.local/bin PATH already configured"
+for PATH_ENTRY in "${PATH_ENTRIES[@]}"; do
 
-else
+    if [[ -f "$BASHRC" ]] &&
+       grep -Fqx "$PATH_ENTRY" "$BASHRC"; then
 
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$BASHRC"
+        echo "✓ PATH entry already configured:"
+        echo "  $PATH_ENTRY"
 
-    echo "✓ ~/.local/bin PATH configured"
+    else
 
-fi
+        echo "$PATH_ENTRY" >> "$BASHRC"
 
-if [[ -f "$BASHRC" ]] &&
-   grep -Fqx 'export PATH="$HOME/scripts:$PATH"' "$BASHRC"; then
+        echo "✓ PATH entry added:"
+        echo "  $PATH_ENTRY"
 
-    echo "✓ ~/scripts PATH already configured"
+    fi
 
-else
+done
 
-    echo 'export PATH="$HOME/scripts:$PATH"' >> "$BASHRC"
-
-    echo "✓ ~/scripts PATH configured"
-
-fi
-
-export PATH="$HOME/.local/bin:$HOME/scripts:$PATH"
+export PATH="$HOME/scripts:$HOME/.local/bin:$PATH"
 
 # ------------------------------------------------------------
 # Step 3: Install / configure Deno
 # ------------------------------------------------------------
 
 echo "[3/6] Checking Deno..."
-
-export DENO_INSTALL="$HOME/.deno"
 
 if command -v deno >/dev/null 2>&1; then
 
@@ -84,29 +80,27 @@ else
 
     curl -fsSL https://deno.land/install.sh | sh
 
+    export DENO_INSTALL="$HOME/.deno"
     export PATH="$DENO_INSTALL/bin:$PATH"
+
+    if [[ -f "$BASHRC" ]] &&
+       ! grep -Fqx 'export DENO_INSTALL="$HOME/.deno"' "$BASHRC"; then
+
+        echo 'export DENO_INSTALL="$HOME/.deno"' >> "$BASHRC"
+
+    fi
+
+    if [[ -f "$BASHRC" ]] &&
+       ! grep -Fqx 'export PATH="$DENO_INSTALL/bin:$PATH"' "$BASHRC"; then
+
+        echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> "$BASHRC"
+
+    fi
 
     echo "✓ Deno installed:"
     deno --version | head -n1
 
 fi
-
-if [[ -f "$BASHRC" ]] &&
-   ! grep -Fqx 'export DENO_INSTALL="$HOME/.deno"' "$BASHRC"; then
-
-    echo 'export DENO_INSTALL="$HOME/.deno"' >> "$BASHRC"
-
-fi
-
-if [[ -f "$BASHRC" ]] &&
-   ! grep -Fqx 'export PATH="$DENO_INSTALL/bin:$PATH"' "$BASHRC"; then
-
-    echo 'export PATH="$DENO_INSTALL/bin:$PATH"' >> "$BASHRC"
-
-fi
-
-# Ensure Deno is available in the current shell as well.
-export PATH="$DENO_INSTALL/bin:$PATH"
 
 # ------------------------------------------------------------
 # Step 4: Install yt-dlp
@@ -234,7 +228,7 @@ if [[ -f "$BASHRC" ]]; then
     source "$BASHRC"
 fi
 
-export PATH="$HOME/.local/bin:$HOME/scripts:$DENO_INSTALL/bin:$PATH"
+export PATH="$HOME/scripts:$HOME/.local/bin:$PATH"
 
 echo "✓ Shell configuration loaded"
 
@@ -251,12 +245,6 @@ echo "  yt                 → $SCRIPT_DIR/yt"
 echo "  ytmp3              → $SCRIPT_DIR/ytmp3"
 echo "  yt-dlp-wrapper     → $SCRIPT_DIR/yt-dlp-wrapper"
 echo "  yt-dlp             → $LOCAL_BIN/yt-dlp"
-
-if command -v deno >/dev/null 2>&1; then
-    echo "  deno               → $(command -v deno)"
-else
-    echo "  deno               → NOT INSTALLED"
-fi
 
 if command -v ffmpeg >/dev/null 2>&1; then
     echo "  ffmpeg             → $(command -v ffmpeg)"
