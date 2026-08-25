@@ -19,10 +19,33 @@ set -u
 #   yt --configure
 #       Configure the wrapper
 #
-# Options:
+# Wrapper options:
 #
 #   --ignore-errors
 #       Continue downloading remaining URLs after a failure.
+#
+#   --show-config
+#       Show current configuration.
+#
+#   --configure
+#       Configure the wrapper.
+#
+#   --help
+#       Show this help.
+#
+# yt-dlp options:
+#
+#   Long-form yt-dlp options are passed through.
+#   User-supplied options are placed after yt-dlc defaults so that explicit
+#   user choices override compatible wrapper defaults.
+#
+#   Short-form yt-dlp options are intentionally rejected. This avoids
+#   ambiguity with 11-character YouTube video IDs.
+#
+# Batch behavior:
+#
+#   Multiple separate inputs receive an automatic 2-5 second randomized delay
+#   between downloads. This is intentionally not configurable.
 #
 # Configuration:
 #
@@ -62,8 +85,25 @@ TRANSCRIPTS="no"
 TRANSCRIPT_LANG="en"
 
 OVERWRITE="no"
-DOWNLOAD_DELAY=""
-GEO_COUNTRY=""
+
+
+# ============================================================================
+# Runtime state
+# ============================================================================
+
+MODE="video"
+
+IGNORE_ERRORS="no"
+
+USER_YTDLP_ARGS=()
+URL_INPUTS=()
+URLS=()
+
+USER_EXTRACTOR_ARGS="no"
+
+SUCCESSFUL=0
+FAILED=0
+FAILED_URLS=()
 
 
 # ============================================================================
@@ -104,14 +144,10 @@ load_config() {
     TRANSCRIPT_LANG="${TRANSCRIPT_LANG:-en}"
 
     OVERWRITE="${OVERWRITE:-no}"
-    DOWNLOAD_DELAY="${DOWNLOAD_DELAY:-}"
-    GEO_COUNTRY="${GEO_COUNTRY:-}"
 
     VIDEO_DIR="$(strip_quotes "$VIDEO_DIR")"
     MUSIC_DIR="$(strip_quotes "$MUSIC_DIR")"
     TRANSCRIPT_LANG="$(strip_quotes "$TRANSCRIPT_LANG")"
-    DOWNLOAD_DELAY="$(strip_quotes "$DOWNLOAD_DELAY")"
-    GEO_COUNTRY="$(strip_quotes "$GEO_COUNTRY")"
 }
 
 
@@ -126,8 +162,6 @@ TRANSCRIPTS=$(printf '%q' "$TRANSCRIPTS")
 TRANSCRIPT_LANG=$(printf '%q' "$TRANSCRIPT_LANG")
 
 OVERWRITE=$(printf '%q' "$OVERWRITE")
-DOWNLOAD_DELAY=$(printf '%q' "$DOWNLOAD_DELAY")
-GEO_COUNTRY=$(printf '%q' "$GEO_COUNTRY")
 EOF
 }
 
@@ -165,18 +199,6 @@ show_config() {
         echo "  Overwrite files:         No"
     fi
 
-    if [[ -n "$DOWNLOAD_DELAY" ]]; then
-        echo "  Download delay:          ${DOWNLOAD_DELAY}s"
-    else
-        echo "  Download delay:          0s"
-    fi
-
-    if [[ -n "$GEO_COUNTRY" ]]; then
-        echo "  Geo country:             $GEO_COUNTRY"
-    else
-        echo "  Geo country:             Not specified"
-    fi
-
     echo "  Temporary files:         $TMP_DIR"
     echo
 }
@@ -189,24 +211,47 @@ show_config() {
 show_help() {
     echo
     echo "Usage:"
-    echo "  yt URL [URL ...]"
-    echo "  ytmp3 URL [URL ...]"
+    echo "  yt [OPTIONS] URL [URL ...]"
+    echo "  ytmp3 [OPTIONS] URL [URL ...]"
     echo
-    echo "Options:"
+    echo "yt-dlc options:"
     echo "  --ignore-errors       Continue after failed downloads"
     echo "  --show-config         Show current configuration"
     echo "  --configure           Configure the wrapper"
-    echo "  --help, -h            Show this help"
+    echo "  --help                Show this help"
+    echo
+    echo "Supported yt-dlp interface:"
+    echo "  Long-form yt-dlp options may be passed through."
+    echo "  User-supplied options override compatible yt-dlc defaults."
+    echo
+    echo "Examples:"
+    echo "  yt --playlist-end 20 PLAYLIST_URL"
+    echo "  yt --playlist-items 1,3,5 PLAYLIST_URL"
+    echo "  yt --geo-bypass-country US VIDEO_URL"
+    echo "  yt --sleep-interval 5 VIDEO_URL"
+    echo "  yt --format 'bestvideo[height<=1080]+bestaudio/best' VIDEO_URL"
+    echo "  yt --output '/tmp/%(title)s.%(ext)s' VIDEO_URL"
+    echo
+    echo "Short yt-dlp options are intentionally not accepted."
+    echo "Use the long form instead:"
+    echo "  --format instead of -f"
+    echo "  --output instead of -o"
+    echo "  --playlist-items instead of -I"
     echo
     echo "URLs may be:"
     echo "  dQw4w9WgXcQ"
     echo "  youtu.be/dQw4w9WgXcQ"
     echo "  https://youtu.be/dQw4w9WgXcQ"
     echo
-    echo "Multiple URLs may be separated by spaces, commas, or semicolons:"
+    echo "Multiple inputs may be separated by spaces, commas, or semicolons:"
     echo "  yt dQw4w9WgXcQ BaW_jOozKJk"
     echo "  yt dQw4w9WgXcQ,BaW_jOozKJk"
     echo "  yt 'dQw4w9WgXcQ;BaW_jOozKJk'"
+    echo
+    echo "Batch downloads automatically wait 2-5 seconds between inputs."
+    echo
+    echo "Note:"
+    echo "  --batch-file is intentionally not supported; pass multiple URLs directly."
     echo
 }
 
@@ -251,10 +296,6 @@ configure() {
     echo "🎵 yt-dlc configuration"
     echo
 
-    # ------------------------------------------------------------------------
-    # Download directories
-    # ------------------------------------------------------------------------
-
     echo "Download directories"
     echo "--------------------"
     echo
@@ -280,10 +321,6 @@ configure() {
 
     echo
 
-    # ------------------------------------------------------------------------
-    # Transcripts
-    # ------------------------------------------------------------------------
-
     echo "Transcripts"
     echo "-----------"
 
@@ -303,42 +340,10 @@ configure() {
 
     echo
 
-    # ------------------------------------------------------------------------
-    # Overwrite
-    # ------------------------------------------------------------------------
-
     if ask_yes_no "Overwrite existing files?" "$OVERWRITE"; then
         OVERWRITE="yes"
     else
         OVERWRITE="no"
-    fi
-
-    echo
-
-    # ------------------------------------------------------------------------
-    # Download delay
-    # ------------------------------------------------------------------------
-
-    read -r -p \
-        "Download delay in seconds [${DOWNLOAD_DELAY:-0}]: " \
-        answer || return 1
-
-    if [[ -n "$answer" ]]; then
-        DOWNLOAD_DELAY="$(strip_quotes "$answer")"
-    fi
-
-    echo
-
-    # ------------------------------------------------------------------------
-    # Geo country
-    # ------------------------------------------------------------------------
-
-    read -r -p \
-        "Geo country code [${GEO_COUNTRY:-none}]: " \
-        answer || return 1
-
-    if [[ -n "$answer" ]]; then
-        GEO_COUNTRY="$(strip_quotes "$answer")"
     fi
 
     echo
@@ -404,7 +409,6 @@ vtt_to_txt() {
 
         {
             gsub(/<[^>]*>/, "", $0)
-
             gsub(/&amp;/,  "\\&", $0)
             gsub(/&lt;/,   "<",   $0)
             gsub(/&gt;/,   ">",   $0)
@@ -421,7 +425,7 @@ vtt_to_txt() {
 
 
 # ============================================================================
-# Find newest VTT in a directory
+# Find newest VTT
 # ============================================================================
 
 find_newest_vtt() {
@@ -458,12 +462,6 @@ download_transcript() {
 
     output_template="$output_dir/%(title)s [%(id)s].%(ext)s"
 
-    # ------------------------------------------------------------------------
-    # First attempt:
-    #
-    # Specifically configured language.
-    # ------------------------------------------------------------------------
-
     "$YT_DLP" \
         --skip-download \
         --write-subs \
@@ -492,7 +490,6 @@ download_transcript() {
 
         if vtt_to_txt "$transcript_file" "$txt_file"; then
             rm -f "$transcript_file"
-
             echo "✅ Transcript downloaded ($TRANSCRIPT_LANG)."
             return 0
         fi
@@ -500,12 +497,6 @@ download_transcript() {
 
     echo "ℹ️ Transcript language '$TRANSCRIPT_LANG' unavailable."
     echo "▶ Trying any available subtitle..."
-
-    # ------------------------------------------------------------------------
-    # Second attempt:
-    #
-    # Any uploaded subtitle.
-    # ------------------------------------------------------------------------
 
     "$YT_DLP" \
         --skip-download \
@@ -528,7 +519,6 @@ download_transcript() {
 
         if vtt_to_txt "$transcript_file" "$txt_file"; then
             rm -f "$transcript_file"
-
             echo "✅ Transcript downloaded."
             return 0
         fi
@@ -536,12 +526,6 @@ download_transcript() {
 
     echo "ℹ️ No uploaded subtitle available."
     echo "▶ Trying any automatically generated subtitle..."
-
-    # ------------------------------------------------------------------------
-    # Third attempt:
-    #
-    # Any automatically generated subtitle.
-    # ------------------------------------------------------------------------
 
     "$YT_DLP" \
         --skip-download \
@@ -564,7 +548,6 @@ download_transcript() {
 
         if vtt_to_txt "$transcript_file" "$txt_file"; then
             rm -f "$transcript_file"
-
             echo "✅ Transcript downloaded."
             return 0
         fi
@@ -590,15 +573,159 @@ check_update() {
 
 
 # ============================================================================
+# yt-dlp option handling
+#
+# We intentionally accept long-form yt-dlp options rather than maintaining a
+# complete copy of yt-dlp's CLI.
+#
+# The value-taking list exists only because the wrapper needs to know when the
+# following argument belongs to an option rather than being another URL.
+#
+# yt-dlp is a large and evolving CLI, so this list should contain options
+# whose separate values can plausibly look like URLs or YouTube IDs.
+# ============================================================================
+
+option_takes_value() {
+    local option="$1"
+
+    case "$option" in
+
+        # Video selection / format
+        --format|--format-sort|--output-format|--merge-output-format)
+            return 0
+            ;;
+
+        # Output
+        --output|--paths|--output-na-placeholder)
+            return 0
+            ;;
+
+        # Playlist
+        --playlist-start|--playlist-end|--playlist-items)
+            return 0
+            ;;
+
+        # Geo / networking
+        --geo-bypass-country|--geo-bypass-ip-block|\
+        --geo-verification-proxy|--proxy|--referer|\
+        --source-address|--socket-timeout)
+            return 0
+            ;;
+
+        # Download timing / rate
+        --sleep-interval|--max-sleep-interval|\
+        --min-sleep-interval|--sleep-requests|\
+        --limit-rate|--throttled-rate|--retries)
+            return 0
+            ;;
+
+        # Authentication / cookies
+        --cookies|--cookies-from-browser|\
+        --username|--password|--twofactor)
+            return 0
+            ;;
+
+        # HTTP
+        --user-agent|--add-header|--impersonate)
+            return 0
+            ;;
+
+        # Subtitles
+        --sub-langs|--sub-format)
+            return 0
+            ;;
+
+        # Audio
+        --audio-format|--audio-quality)
+            return 0
+            ;;
+
+        # Extractor
+        --extractor-args|--use-extractors)
+            return 0
+            ;;
+
+        # External tools
+        --ffmpeg-location|--exec|--exec-before-download|\
+        --downloader|--downloader-args)
+            return 0
+            ;;
+
+        # Metadata / filtering
+        --match-filter|--dateafter|--datebefore|\
+        --playlist-reverse|--playlist-random)
+            return 0
+            ;;
+
+        *)
+            return 1
+            ;;
+
+    esac
+}
+
+
+# ============================================================================
+# Wrapper-owned options
+#
+# These must never be forwarded to yt-dlp.
+# ============================================================================
+
+is_wrapper_option() {
+    case "$1" in
+        --ignore-errors|--show-config|--configure|--help)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
+# ============================================================================
+# yt-dlp options that would conflict with wrapper-owned behavior
+#
+# We don't silently override these. Instead, the wrapper tells the user why
+# the option is unavailable.
+# ============================================================================
+
+is_blocked_option() {
+    local option="$1"
+
+    case "$option" in
+        --batch-file|--no-batch-file)
+            return 0
+            ;;
+
+        --update|--no-update)
+            return 0
+            ;;
+
+        --help)
+            return 0
+            ;;
+
+        --ignore-errors)
+            return 0
+            ;;
+
+        *)
+            return 1
+            ;;
+    esac
+}
+
+
+# ============================================================================
 # Build common yt-dlp arguments
+#
+# User arguments are appended later and therefore take precedence over
+# compatible defaults.
 # ============================================================================
 
 build_common_args() {
     args=()
-
-    # ------------------------------------------------------------------------
-    # Output location
-    # ------------------------------------------------------------------------
 
     if [[ "$MODE" == "mp3" ]]; then
         if [[ -n "$MUSIC_DIR" ]]; then
@@ -610,23 +737,11 @@ build_common_args() {
         fi
     fi
 
-    # ------------------------------------------------------------------------
-    # Temporary working directory
-    # ------------------------------------------------------------------------
-
     args+=(--paths "temp:$TMP_DIR")
-
-    # ------------------------------------------------------------------------
-    # Output filename
-    # ------------------------------------------------------------------------
 
     args+=(
         --output "%(title)s [%(id)s].%(ext)s"
     )
-
-    # ------------------------------------------------------------------------
-    # Overwrite behavior
-    # ------------------------------------------------------------------------
 
     if [[ "$OVERWRITE" == "yes" ]]; then
         args+=(--force-overwrites)
@@ -634,39 +749,13 @@ build_common_args() {
         args+=(--no-overwrites)
     fi
 
-    # ------------------------------------------------------------------------
-    # Download delay
-    # ------------------------------------------------------------------------
-
-    if [[ -n "$DOWNLOAD_DELAY" ]]; then
-        args+=(--sleep-interval "$DOWNLOAD_DELAY")
-    fi
-
-    # ------------------------------------------------------------------------
-    # Geo country
-    # ------------------------------------------------------------------------
-
-    if [[ -n "$GEO_COUNTRY" ]]; then
-        args+=(--geo-bypass-country "$GEO_COUNTRY")
-    fi
-
-    # ------------------------------------------------------------------------
-    # Video mode
-    # ------------------------------------------------------------------------
-
     if [[ "$MODE" == "video" ]]; then
-
         args+=(
             --format "bestvideo*+bestaudio/best"
             --merge-output-format mp4
         )
 
-    # ------------------------------------------------------------------------
-    # MP3 mode
-    # ------------------------------------------------------------------------
-
     elif [[ "$MODE" == "mp3" ]]; then
-
         args+=(
             --format "bestaudio/best"
             --extract-audio
@@ -678,12 +767,7 @@ build_common_args() {
 
 
 # ============================================================================
-# Perform a single download
-#
-# Returns:
-#
-#   0  success
-#   non-zero  failure
+# Download one URL
 # ============================================================================
 
 download() {
@@ -696,10 +780,7 @@ download() {
         output_dir="${VIDEO_DIR:-$(pwd)}"
     fi
 
-    # Ensure destination exists when configured.
-    if [[ -n "$output_dir" ]]; then
-        mkdir -p "$output_dir"
-    fi
+    mkdir -p "$output_dir"
 
     build_common_args
 
@@ -707,6 +788,7 @@ download() {
 
     "$YT_DLP" \
         "${args[@]}" \
+        "${USER_YTDLP_ARGS[@]}" \
         "$url"
 
     local status=$?
@@ -724,12 +806,9 @@ download() {
     echo "▶ Retrying..."
     echo
 
-    # ------------------------------------------------------------------------
-    # Standard retry
-    # ------------------------------------------------------------------------
-
     "$YT_DLP" \
         "${args[@]}" \
+        "${USER_YTDLP_ARGS[@]}" \
         "$url"
 
     status=$?
@@ -741,16 +820,21 @@ download() {
 
     echo
     echo "⚠️ Standard retry failed."
+
+    if [[ "$USER_EXTRACTOR_ARGS" == "yes" ]]; then
+        echo "ℹ️ Skipping web-client fallback because --extractor-args was supplied."
+        echo
+        echo "❌ Download failed."
+        return "$status"
+    fi
+
     echo "▶ Retrying with the YouTube web client..."
     echo
-
-    # ------------------------------------------------------------------------
-    # YouTube web-client retry
-    # ------------------------------------------------------------------------
 
     "$YT_DLP" \
         --extractor-args "youtube:player_client=web" \
         "${args[@]}" \
+        "${USER_YTDLP_ARGS[@]}" \
         "$url"
 
     status=$?
@@ -768,101 +852,205 @@ download() {
 
 
 # ============================================================================
-# Argument parsing
+# Automatic batch delay
 #
-# Rules:
-#
-#   --something
-#       Wrapper option
-#
-#   anything else
-#       URL / video ID
-#
-# URL inputs may be separated by:
-#
-#   spaces
-#   commas
-#   semicolons
+# 2-5 seconds is deliberately used instead of a fixed delay. It is enough to
+# avoid hammering requests in a batch without making ordinary small batches
+# unnecessarily slow.
 # ============================================================================
 
-MODE="${1:-}"
+batch_delay() {
+    local current_index="$1"
+    local total="$2"
 
-if [[ "$MODE" == "video" || "$MODE" == "mp3" ]]; then
+    if (( total <= 1 || current_index >= total )); then
+        return 0
+    fi
+
+    local delay=$(( RANDOM % 4 + 2 ))
+
+    echo
+    echo "⏳ Waiting ${delay}s before the next download..."
+    sleep "$delay"
+}
+
+
+# ============================================================================
+# Determine mode
+# ============================================================================
+
+if [[ "${1:-}" == "video" || "${1:-}" == "mp3" ]]; then
+    MODE="$1"
     shift
-else
-    MODE="video"
+fi
+
+
+if [[ "$#" -eq 0 ]]; then
+    show_help
+    exit 1
 fi
 
 
 # ============================================================================
-# Wrapper options and URL collection
+# Argument parsing
+#
+# IMPORTANT:
+#
+# Wrapper commands are checked BEFORE YouTube-ID detection.
+#
+# This prevents:
+#
+#   --configure
+#
+# from being interpreted as an 11-character YouTube ID.
 # ============================================================================
 
-IGNORE_ERRORS="no"
-URL_INPUTS=()
-
+EXPECTING_OPTION_VALUE="no"
+CURRENT_OPTION=""
 
 for arg in "$@"; do
 
     # ------------------------------------------------------------------------
-    # Anything beginning with "--" is a wrapper option.
+    # Value belonging to previous yt-dlp option
+    # ------------------------------------------------------------------------
+
+    if [[ "$EXPECTING_OPTION_VALUE" == "yes" ]]; then
+        USER_YTDLP_ARGS+=("$arg")
+        EXPECTING_OPTION_VALUE="no"
+        CURRENT_OPTION=""
+        continue
+    fi
+
+    # ------------------------------------------------------------------------
+    # Wrapper-owned commands first
+    # ------------------------------------------------------------------------
+
+    case "$arg" in
+
+        --ignore-errors)
+            IGNORE_ERRORS="yes"
+            continue
+            ;;
+
+        --show-config)
+            load_config
+            show_config
+            exit 0
+            ;;
+
+        --configure)
+            load_config
+            configure
+            exit 0
+            ;;
+
+        --help)
+            show_help
+            exit 0
+            ;;
+
+    esac
+
+    # ------------------------------------------------------------------------
+    # Explicit end-of-options marker
+    # ------------------------------------------------------------------------
+
+    if [[ "$arg" == "--" ]]; then
+        USER_YTDLP_ARGS+=("$arg")
+        continue
+    fi
+
+    # ------------------------------------------------------------------------
+    # Bare YouTube video ID
+    #
+    # This intentionally occurs before generic "-" handling.
+    #
+    # Valid IDs may begin with '-' or contain '-'.
+    # ------------------------------------------------------------------------
+
+    if [[ "$arg" =~ ^[A-Za-z0-9_-]{11}$ ]]; then
+        URL_INPUTS+=("$arg")
+        continue
+    fi
+
+    # ------------------------------------------------------------------------
+    # Long-form yt-dlp option
     # ------------------------------------------------------------------------
 
     if [[ "$arg" == --* ]]; then
 
-        case "$arg" in
+        if is_blocked_option "$arg"; then
+            echo "❌ Option '$arg' is controlled by yt-dlc and cannot be passed through."
+            exit 1
+        fi
 
-            --ignore-errors)
-                IGNORE_ERRORS="yes"
-                ;;
+        USER_YTDLP_ARGS+=("$arg")
 
-            --show-config)
-                load_config
-                show_config
-                exit 0
-                ;;
+        # --option=value already contains its value.
+        if [[ "$arg" == *=* ]]; then
+            EXPECTING_OPTION_VALUE="no"
+            CURRENT_OPTION=""
 
-            --configure)
-                load_config
-                configure
-                exit 0
-                ;;
+        else
+            if option_takes_value "$arg"; then
+                EXPECTING_OPTION_VALUE="yes"
+                CURRENT_OPTION="$arg"
+            else
+                EXPECTING_OPTION_VALUE="no"
+                CURRENT_OPTION=""
+            fi
+        fi
 
-            --help)
-                show_help
-                exit 0
-                ;;
-
-            *)
-                echo "❌ Unknown option: $arg"
-                echo
-                show_help
-                exit 1
-                ;;
-
-        esac
+        if [[ "$arg" == "--extractor-args" ||
+              "$arg" == --extractor-args=* ]]; then
+            USER_EXTRACTOR_ARGS="yes"
+        fi
 
         continue
     fi
 
     # ------------------------------------------------------------------------
-    # Anything else is URL input.
+    # Short options are intentionally rejected.
+    #
+    # This is important because YouTube IDs may contain '-'.
     # ------------------------------------------------------------------------
 
-    URL_INPUTS+=("$arg")
-
-done
-
-
-# ============================================================================
-# Short help option
-# ============================================================================
-
-for arg in "${URL_INPUTS[@]}"; do
-    if [[ "$arg" == "-h" ]]; then
-        show_help
-        exit 0
+    if [[ "$arg" == -* ]]; then
+        echo "❌ Short options are not accepted by yt-dlc: $arg"
+        echo
+        echo "Use the long yt-dlp form instead."
+        echo
+        echo "Examples:"
+        echo "  -f  → --format"
+        echo "  -o  → --output"
+        echo "  -I  → --playlist-items"
+        echo
+        exit 1
     fi
+
+    # ------------------------------------------------------------------------
+    # URLs
+    # ------------------------------------------------------------------------
+
+    if [[ "$arg" =~ ^https?:// ||
+          "$arg" =~ ^youtu\.be/ ]]; then
+
+        URL_INPUTS+=("$arg")
+        continue
+    fi
+
+    # ------------------------------------------------------------------------
+    # Anything else at this point is invalid.
+    #
+    # We do NOT silently treat arbitrary text as a yt-dlp value because doing
+    # so makes malformed commands surprisingly dangerous.
+    # ------------------------------------------------------------------------
+
+    echo "❌ Invalid input: $arg"
+    echo
+    echo "Expected a URL, YouTube video ID, or long-form yt-dlp option."
+    exit 1
+
 done
 
 
@@ -875,25 +1063,15 @@ ensure_directories
 
 
 # ============================================================================
-# Expand and normalize URL input
+# Normalize URL inputs
 # ============================================================================
 
 URLS=()
 
 for input in "${URL_INPUTS[@]}"; do
 
-    # ------------------------------------------------------------------------
-    # Allow comma and semicolon delimiters inside a single argument.
-    #
-    # Spaces are already handled by the shell as separate arguments.
-    # ------------------------------------------------------------------------
-
     input="${input//,/ }"
     input="${input//;/ }"
-
-    # ------------------------------------------------------------------------
-    # Split resulting string on whitespace.
-    # ------------------------------------------------------------------------
 
     read -r -a parts <<< "$input"
 
@@ -901,48 +1079,25 @@ for input in "${URL_INPUTS[@]}"; do
 
         [[ -z "$part" ]] && continue
 
-        # ------------------------------------------------------------
-        # Bare YouTube video ID
-        # ------------------------------------------------------------
-
         if [[ "$part" =~ ^[A-Za-z0-9_-]{11}$ ]]; then
             URLS+=("https://youtu.be/$part")
             continue
         fi
-
-        # ------------------------------------------------------------
-        # youtu.be/<ID>
-        # ------------------------------------------------------------
 
         if [[ "$part" =~ ^youtu\.be/([A-Za-z0-9_-]{11})$ ]]; then
             URLS+=("https://$part")
             continue
         fi
 
-        # ------------------------------------------------------------
-        # http(s)://youtu.be/<ID>
-        # ------------------------------------------------------------
-
         if [[ "$part" =~ ^https?://youtu\.be/([A-Za-z0-9_-]{11}) ]]; then
             URLS+=("$part")
             continue
         fi
 
-        # ------------------------------------------------------------
-        # Other HTTP(S) URLs
-        #
-        # Keep these intact and let yt-dlp determine whether it supports
-        # them.
-        # ------------------------------------------------------------
-
         if [[ "$part" =~ ^https?:// ]]; then
             URLS+=("$part")
             continue
         fi
-
-        # ------------------------------------------------------------
-        # Reject anything that does not resemble a URL or video ID.
-        # ------------------------------------------------------------
 
         echo "⚠️ Ignoring invalid URL/input: $part"
 
@@ -968,12 +1123,11 @@ fi
 # Execute batch
 # ============================================================================
 
-SUCCESSFUL=0
-FAILED=0
-FAILED_URLS=()
+TOTAL="${#URLS[@]}"
 
+for (( INDEX=0; INDEX<TOTAL; INDEX++ )); do
 
-for URL in "${URLS[@]}"; do
+    URL="${URLS[$INDEX]}"
 
     echo
     echo "▶ Downloading: $URL"
@@ -1002,7 +1156,10 @@ for URL in "${URLS[@]}"; do
             exit 1
 
         fi
+    fi
 
+    if (( INDEX + 1 < TOTAL )); then
+        batch_delay "$((INDEX + 1))" "$TOTAL"
     fi
 
 done
@@ -1018,7 +1175,6 @@ echo "Batch completed."
 printf '   Successful: %d\n' "$SUCCESSFUL"
 printf '   Failed:     %d\n' "$FAILED"
 
-
 if [[ "$FAILED" -gt 0 ]]; then
 
     echo
@@ -1028,14 +1184,11 @@ if [[ "$FAILED" -gt 0 ]]; then
         echo "  - $URL"
     done
 
-    if [[ "$IGNORE_ERRORS" == "yes" ]]; then
-        echo
-        echo "⚠️ Errors were ignored; batch processing continued."
-    fi
+    echo
+    echo "⚠️ One or more downloads failed."
 
     exit 1
 fi
-
 
 echo
 echo "✅ All downloads completed successfully."
