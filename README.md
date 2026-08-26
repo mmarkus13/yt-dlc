@@ -95,6 +95,20 @@ The expected locations are similar to:
 
 ---
 
+### A note on AI assistance
+This project was developed with substantial assistance from AI tools, including ChatGPT.\
+I'm being transparent about that because I think it's important to distinguish between AI-assisted development and manually writing every line of code.
+
+The idea, goals, direction, and overall execution of the project originated with me.\
+I organized the work, designed and refined the requirements, guided the implementation through iterative prompting, evaluated the results, and tested and integrated the pieces into the final project.\
+The development process took several days of focused iteration to turn the initial idea into something working and usable.
+
+AI generated a significant portion of the code, but I remain responsible for the decisions about what went into the project, how the pieces fit together, and what I ultimately chose to release.
+
+In short: AI was a development tool and collaborator; the idea, direction, and responsibility for the finished project are mine.
+
+---
+
 # 📋 Prerequisites
 
 The normal installation uses:
