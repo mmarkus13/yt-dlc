@@ -20,6 +20,9 @@ set -u
 #   yt --configure
 #       Configure the wrapper
 #
+#   yt --diagnose
+#       Diagnose the wrapper, configuration and dependencies
+#
 # Wrapper options:
 #
 #   --ignore-errors
@@ -33,6 +36,9 @@ set -u
 #
 #   --configure
 #       Configure the wrapper.
+#
+#   --diagnose
+#       Diagnose the wrapper.
 #
 #   --help
 #       Show this help.
@@ -376,6 +382,150 @@ show_config() {
 
     validate_config
 }
+
+# ============================================================================
+# Diagnostics
+# ============================================================================
+
+diagnose() {
+
+    local failures=0
+    local yt_dlp_version=""
+    local ffmpeg_path=""
+    local ffmpeg_version=""
+
+    echo
+    echo "yt-dlc diagnostics"
+    echo "------------------"
+    echo
+
+    echo "Wrapper:"
+    echo "  Version:              $YT_DLC_VERSION"
+    echo "  Script:               $0"
+    echo
+
+    echo "Configuration:"
+    echo "  Config file:          $CONFIG_FILE"
+
+    if [[ ! -f "$CONFIG_FILE" ]]; then
+        echo "  Config status:        not present (defaults are in use)"
+    elif [[ "$CONFIG_SYNTAX_ERROR" == "yes" ]]; then
+        echo "  Config status:        ❌ invalid Bash syntax"
+        failures=$((failures + 1))
+    else
+        echo "  Config status:        ✅ readable"
+    fi
+
+    if [[ -n "${VIDEO_DIR:-}" ]]; then
+        echo "  Video directory:      $VIDEO_DIR"
+
+        if [[ -d "$VIDEO_DIR" ]]; then
+            echo "    Exists:             ✅"
+        else
+            echo "    Exists:             ❌"
+            failures=$((failures + 1))
+        fi
+
+        if [[ -d "$VIDEO_DIR" && -w "$VIDEO_DIR" ]]; then
+            echo "    Writable:           ✅"
+        else
+            echo "    Writable:           ❌"
+            failures=$((failures + 1))
+        fi
+    else
+        echo "  Video directory:      <not set>"
+    fi
+
+    if [[ -n "${MUSIC_DIR:-}" ]]; then
+        echo "  Music directory:      $MUSIC_DIR"
+
+        if [[ -d "$MUSIC_DIR" ]]; then
+            echo "    Exists:             ✅"
+        else
+            echo "    Exists:             ❌"
+            failures=$((failures + 1))
+        fi
+
+        if [[ -d "$MUSIC_DIR" && -w "$MUSIC_DIR" ]]; then
+            echo "    Writable:           ✅"
+        else
+            echo "    Writable:           ❌"
+            failures=$((failures + 1))
+        fi
+    else
+        echo "  Music directory:      <not set>"
+    fi
+
+    echo "  Transcript:           ${TRANSCRIPTS:-no}"
+    echo "  Transcript language:  ${TRANSCRIPT_LANG:-<not set>}"
+
+    echo
+
+    if [[ "$CONFIG_SYNTAX_ERROR" == "no" ]]; then
+        if require_valid_config >/dev/null 2>&1; then
+            echo "  Configuration:        ✅ valid"
+        else
+            echo "  Configuration:        ❌ invalid"
+            failures=$((failures + 1))
+        fi
+    fi
+
+    echo
+    echo "yt-dlp:"
+
+    if [[ -x "$YT_DLP" ]]; then
+        echo "  Executable:            $YT_DLP"
+
+        yt_dlp_version="$("$YT_DLP" --version 2>/dev/null || true)"
+
+        if [[ -n "$yt_dlp_version" ]]; then
+            echo "  Version:               $yt_dlp_version"
+        else
+            echo "  Version:               ❌ unable to determine"
+            failures=$((failures + 1))
+        fi
+    else
+        echo "  Executable:            ❌ not found"
+        echo "  Expected:              $YT_DLP"
+        failures=$((failures + 1))
+    fi
+
+    echo
+    echo "ffmpeg:"
+
+    ffmpeg_path="$(command -v ffmpeg 2>/dev/null || true)"
+
+    if [[ -n "$ffmpeg_path" ]]; then
+        echo "  Executable:            $ffmpeg_path"
+
+        ffmpeg_version="$(
+            ffmpeg -version 2>/dev/null |
+            head -n 1
+        )"
+
+        if [[ -n "$ffmpeg_version" ]]; then
+            echo "  Version:               $ffmpeg_version"
+        fi
+    else
+        echo "  Executable:            ❌ not found"
+        failures=$((failures + 1))
+    fi
+
+    echo
+    echo "Runtime:"
+    echo "  Bash:                  ${BASH_VERSION:-unknown}"
+    echo "  Working directory:     $(pwd)"
+    echo
+
+    if (( failures == 0 )); then
+        echo "✅ Diagnostics completed successfully."
+        return 0
+    fi
+
+    echo "❌ Diagnostics found $failures problem(s)."
+    return 1
+}
+
 # ============================================================================
 # Help
 # ============================================================================
@@ -392,6 +542,7 @@ show_help() {
     echo "  --show-config         Show current configuration"
     echo "  --configure           Configure the wrapper"
     echo "  --reset-config        Reset configuration to defaults"
+    echo "  --diagnose            Diagnose wrapper configuration and dependencies"
     echo "  --transcript          Enable transcript for this command"
     echo "  --no-transcript       Disable transcript for this command"
     echo "  --help                Show this help"
@@ -980,7 +1131,7 @@ option_takes_value() {
 is_wrapper_option() {
     case "$1" in
         --ignore-errors|--version|--show-config|--configure|--reset-config|\
-        --transcript|--no-transcript|--help)
+        --diagnose|--transcript|--no-transcript|--help)
             return 0
             ;;
 
@@ -989,6 +1140,7 @@ is_wrapper_option() {
             ;;
     esac
 }
+
 
 # ============================================================================
 # yt-dlp options that would conflict with wrapper-owned behavior
@@ -1183,10 +1335,17 @@ if [[ "${1:-}" == "video" || "${1:-}" == "mp3" ]]; then
     shift
 fi
 
+if [[ "${1:-}" == "--diagnose" ]]; then
+    load_config
+    diagnose
+    exit $?
+fi
+
 if [[ "$#" -eq 0 ]]; then
     show_help
     exit 1
 fi
+
 # ============================================================================
 # Argument parsing
 #
@@ -1255,7 +1414,7 @@ for arg in "$@"; do
             exit 0
             ;;
 
-	--reset-config)
+    --reset-config)
             reset_config
             exit 0
             ;;
