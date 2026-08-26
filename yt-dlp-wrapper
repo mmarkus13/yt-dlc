@@ -66,9 +66,7 @@ set -u
 # ============================================================================
 # Version
 # ============================================================================
-
 YT_DLC_VERSION="0.1.0"
-
 # ============================================================================
 # Paths
 # ============================================================================
@@ -80,7 +78,6 @@ CACHE_DIR="$HOME/.cache/yt-dlc"
 TMP_DIR="$CACHE_DIR/tmp"
 
 YT_DLP="$HOME/.local/bin/yt-dlp"
-
 # ============================================================================
 # Defaults
 # ============================================================================
@@ -92,7 +89,6 @@ TRANSCRIPTS="no"
 TRANSCRIPT_LANG="en"
 
 OVERWRITE="no"
-
 # ============================================================================
 # Runtime state
 # ============================================================================
@@ -100,7 +96,6 @@ OVERWRITE="no"
 MODE="video"
 
 IGNORE_ERRORS="no"
-
 USER_YTDLP_ARGS=()
 URL_INPUTS=()
 URLS=()
@@ -111,6 +106,7 @@ SUCCESSFUL=0
 FAILED=0
 FAILED_URLS=()
 
+CONFIG_SYNTAX_ERROR="no"
 # ============================================================================
 # Utility functions
 # ============================================================================
@@ -140,7 +136,16 @@ ensure_directories() {
 
 
 load_config() {
+    CONFIG_SYNTAX_ERROR="no"
+
     if [[ ! -f "$CONFIG_FILE" ]]; then
+        return 0
+    fi
+
+    # Check syntax before sourcing so a malformed configuration does not leave
+    # the wrapper with partially loaded settings.
+    if ! bash -n "$CONFIG_FILE" 2>/dev/null; then
+        CONFIG_SYNTAX_ERROR="yes"
         return 0
     fi
 
@@ -174,7 +179,129 @@ TRANSCRIPT_LANG=$(printf '%q' "$TRANSCRIPT_LANG")
 OVERWRITE=$(printf '%q' "$OVERWRITE")
 EOF
 }
+# ============================================================================
+# Configuration validation
+# ============================================================================
 
+validate_directory_setting() {
+    local name="$1"
+    local value="$2"
+    local parent
+
+    [[ -z "$value" ]] && return 0
+
+    if [[ -e "$value" ]]; then
+        if [[ ! -d "$value" ]]; then
+            echo "❌ $name is not a directory:"
+            echo "   $value"
+            return 1
+        fi
+
+        if [[ ! -w "$value" ]]; then
+            echo "❌ $name is not writable:"
+            echo "   $value"
+            return 1
+        fi
+
+        return 0
+    fi
+
+    parent="$value"
+
+    while [[ ! -e "$parent" && "$parent" != "/" ]]; do
+        parent="$(dirname "$parent")"
+    done
+
+    if [[ ! -d "$parent" ]]; then
+        echo "❌ Cannot determine a valid parent directory for $name:"
+        echo "   $value"
+        return 1
+    fi
+
+    if [[ ! -w "$parent" ]]; then
+        echo "❌ Parent directory for $name is not writable:"
+        echo "   $parent"
+        return 1
+    fi
+
+    return 0
+}
+
+
+validate_config() {
+    local valid="yes"
+
+    echo
+    echo "Configuration validation"
+    echo "------------------------"
+
+    if [[ "$CONFIG_SYNTAX_ERROR" == "yes" ]]; then
+        echo "❌ Configuration file contains invalid Bash syntax:"
+        echo "   $CONFIG_FILE"
+        valid="no"
+    fi
+
+    case "$TRANSCRIPTS" in
+        yes|no)
+            ;;
+        *)
+            echo "❌ TRANSCRIPTS must be 'yes' or 'no'."
+            echo "   Current value: $TRANSCRIPTS"
+            valid="no"
+            ;;
+    esac
+
+    if [[ -z "$TRANSCRIPT_LANG" ]]; then
+        echo "❌ TRANSCRIPT_LANG must not be empty."
+        valid="no"
+    elif [[ ! "$TRANSCRIPT_LANG" =~ ^[A-Za-z0-9_-]+$ ]]; then
+        echo "❌ TRANSCRIPT_LANG contains invalid characters."
+        echo "   Current value: $TRANSCRIPT_LANG"
+        echo "   Expected a language code such as: en, hu, en-US"
+        valid="no"
+    fi
+
+    case "$OVERWRITE" in
+        yes|no)
+            ;;
+        *)
+            echo "❌ OVERWRITE must be 'yes' or 'no'."
+            echo "   Current value: $OVERWRITE"
+            valid="no"
+            ;;
+    esac
+
+    if ! validate_directory_setting "VIDEO_DIR" "$VIDEO_DIR"; then
+        valid="no"
+    fi
+
+    if ! validate_directory_setting "MUSIC_DIR" "$MUSIC_DIR"; then
+        valid="no"
+    fi
+
+    if [[ "$valid" == "yes" ]]; then
+        echo "✅ Configuration is valid."
+        return 0
+    fi
+
+    echo
+    echo "⚠️ Configuration is invalid."
+    return 1
+}
+
+
+require_valid_config() {
+    if ! validate_config; then
+        echo
+        echo "Run:"
+        echo "  yt --configure"
+        echo
+        echo "to repair the configuration."
+        return 1
+    fi
+
+    return 0
+}
 # ============================================================================
 # Configuration display
 # ============================================================================
@@ -210,8 +337,9 @@ show_config() {
 
     echo "  Temporary files:         $TMP_DIR"
     echo
-}
 
+    validate_config
+}
 # ============================================================================
 # Help
 # ============================================================================
@@ -263,7 +391,6 @@ show_help() {
     echo "  --batch-file is intentionally not supported; pass multiple URLs directly."
     echo
 }
-
 # ============================================================================
 # Interactive configuration
 # ============================================================================
@@ -362,7 +489,6 @@ configure() {
 
     show_config
 }
-
 # ============================================================================
 # VTT -> TXT conversion
 # ============================================================================
@@ -428,7 +554,6 @@ vtt_to_txt() {
         }
     ' "$input" > "$output"
 }
-
 # ============================================================================
 # Select a subtitle language from yt-dlp --list-subs output
 #
@@ -510,7 +635,6 @@ select_subtitle_language() {
         }
     '
 }
-
 # ============================================================================
 # Find a VTT belonging to a specific subtitle language
 #
@@ -534,7 +658,6 @@ find_transcript_vtt() {
         head -n1 |
         cut -d' ' -f2-
 }
-
 # ============================================================================
 # Transcript download
 #
@@ -707,7 +830,6 @@ download_transcript() {
 
     return 0
 }
-
 # ============================================================================
 # yt-dlp update check
 # ============================================================================
@@ -719,7 +841,6 @@ check_update() {
 
     echo
 }
-
 # ============================================================================
 # yt-dlp option handling
 #
@@ -811,7 +932,6 @@ option_takes_value() {
 
     esac
 }
-
 # ============================================================================
 # Wrapper-owned options
 #
@@ -829,7 +949,6 @@ is_wrapper_option() {
             ;;
     esac
 }
-
 # ============================================================================
 # yt-dlp options that would conflict with wrapper-owned behavior
 #
@@ -862,7 +981,6 @@ is_blocked_option() {
             ;;
     esac
 }
-
 # ============================================================================
 # Build common yt-dlp arguments
 #
@@ -910,7 +1028,6 @@ build_common_args() {
         )
     fi
 }
-
 # ============================================================================
 # Download one URL
 # ============================================================================
@@ -994,7 +1111,6 @@ download() {
 
     return "$status"
 }
-
 # ============================================================================
 # Automatic batch delay
 #
@@ -1017,7 +1133,6 @@ batch_delay() {
     echo "⏳ Waiting ${delay}s before the next download..."
     sleep "$delay"
 }
-
 # ============================================================================
 # Determine mode
 # ============================================================================
@@ -1031,7 +1146,6 @@ if [[ "$#" -eq 0 ]]; then
     show_help
     exit 1
 fi
-
 # ============================================================================
 # Argument parsing
 #
@@ -1198,14 +1312,19 @@ for arg in "$@"; do
     exit 1
 
 done
-
 # ============================================================================
-# Load configuration
+# Load and validate configuration
 # ============================================================================
 
 load_config
-ensure_directories
 
+if [[ "$CONFIG_SYNTAX_ERROR" == "no" ]]; then
+    ensure_directories
+fi
+
+if ! require_valid_config; then
+    exit 1
+fi
 # ============================================================================
 # Normalize URL inputs
 # ============================================================================
@@ -1248,7 +1367,6 @@ for input in "${URL_INPUTS[@]}"; do
     done
 
 done
-
 # ============================================================================
 # Validate URLs
 # ============================================================================
@@ -1260,7 +1378,6 @@ if [[ "${#URLS[@]}" -eq 0 ]]; then
     show_help
     exit 1
 fi
-
 # ============================================================================
 # Execute batch
 # ============================================================================
@@ -1288,7 +1405,6 @@ for (( INDEX=0; INDEX<TOTAL; INDEX++ )); do
             echo "ℹ️ Ignoring error and continuing..."
 
         else
-
             echo
             echo "❌ Download failed: $URL"
             echo
@@ -1303,7 +1419,6 @@ for (( INDEX=0; INDEX<TOTAL; INDEX++ )); do
     fi
 
 done
-
 # ============================================================================
 # Batch summary
 # ============================================================================
