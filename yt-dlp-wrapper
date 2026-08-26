@@ -96,6 +96,7 @@ OVERWRITE="no"
 MODE="video"
 
 IGNORE_ERRORS="no"
+TRANSCRIPT_OVERRIDE=""
 USER_YTDLP_ARGS=()
 URL_INPUTS=()
 URLS=()
@@ -391,6 +392,8 @@ show_help() {
     echo "  --show-config         Show current configuration"
     echo "  --configure           Configure the wrapper"
     echo "  --reset-config        Reset configuration to defaults"
+    echo "  --transcript          Enable transcript for this command"
+    echo "  --no-transcript       Disable transcript for this command"
     echo "  --help                Show this help"
     echo
     echo "Supported yt-dlp interface:"
@@ -976,7 +979,8 @@ option_takes_value() {
 
 is_wrapper_option() {
     case "$1" in
-        --ignore-errors|--version|--show-config|--configure|--reset-config|--help)
+        --ignore-errors|--version|--show-config|--configure|--reset-config|\
+        --transcript|--no-transcript|--help)
             return 0
             ;;
 
@@ -1224,6 +1228,16 @@ for arg in "$@"; do
             continue
             ;;
 
+        --transcript)
+            TRANSCRIPT_OVERRIDE="yes"
+            continue
+            ;;
+
+        --no-transcript)
+            TRANSCRIPT_OVERRIDE="no"
+            continue
+            ;;
+
         --version)
             show_version
             exit 0
@@ -1362,6 +1376,14 @@ load_config
 
 if [[ "$CONFIG_SYNTAX_ERROR" == "no" ]]; then
     ensure_directories
+fi
+
+# Command-line transcript selection overrides the persistent configuration
+# for this invocation only.
+if [[ "$TRANSCRIPT_OVERRIDE" == "yes" ]]; then
+    TRANSCRIPTS="yes"
+elif [[ "$TRANSCRIPT_OVERRIDE" == "no" ]]; then
+    TRANSCRIPTS="no"
 fi
 
 if ! require_valid_config; then
