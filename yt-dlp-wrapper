@@ -302,6 +302,41 @@ require_valid_config() {
 
     return 0
 }
+
+# ============================================================================
+# Configuration reset
+# ============================================================================
+
+reset_config() {
+    echo
+    echo "⚠️ Reset yt-dlc configuration to defaults?"
+    echo
+
+    if ! ask_yes_no "Continue?" "no"; then
+        echo
+        echo "Reset cancelled."
+        return 0
+    fi
+
+    VIDEO_DIR=""
+    MUSIC_DIR=""
+
+    TRANSCRIPTS="no"
+    TRANSCRIPT_LANG="en"
+
+    OVERWRITE="no"
+
+    save_config
+
+    echo
+    echo "Configuration reset to defaults."
+    echo
+    echo "Configuration saved to:"
+    echo "  $CONFIG_FILE"
+
+    show_config
+}
+
 # ============================================================================
 # Configuration display
 # ============================================================================
@@ -355,6 +390,7 @@ show_help() {
     echo "  --version             Show yt-dlc version"
     echo "  --show-config         Show current configuration"
     echo "  --configure           Configure the wrapper"
+    echo "  --reset-config        Reset configuration to defaults"
     echo "  --help                Show this help"
     echo
     echo "Supported yt-dlp interface:"
@@ -940,7 +976,7 @@ option_takes_value() {
 
 is_wrapper_option() {
     case "$1" in
-        --ignore-errors|--version|--show-config|--configure|--help)
+        --ignore-errors|--version|--show-config|--configure|--reset-config|--help)
             return 0
             ;;
 
@@ -949,6 +985,7 @@ is_wrapper_option() {
             ;;
     esac
 }
+
 # ============================================================================
 # yt-dlp options that would conflict with wrapper-owned behavior
 #
@@ -1201,6 +1238,11 @@ for arg in "$@"; do
         --configure)
             load_config
             configure
+            exit 0
+            ;;
+
+	--reset-config)
+            reset_config
             exit 0
             ;;
 
