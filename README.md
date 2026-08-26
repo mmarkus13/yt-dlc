@@ -86,8 +86,12 @@ The expected locations are similar to:
 - `--playlist-end`, `--playlist-items`, `--geo-bypass-country`,
   `--format`, `--output`, and many other long-form yt-dlp options are supported
 - Designed for Linux, WSL, macOS, and SteamOS
-- No system Python installation is required when using the standalone yt-dlp
-  binary
+- No system Python installation is required when using the standalone yt-dlp binary
+- Wrapper diagnostics with `--diagnose`
+- Wrapper self-update with `--update`
+- One-step wrapper rollback with `--rollback`
+- Per-command transcript overrides with `--transcript` and `--no-transcript`
+- Configuration reset with `--reset-config`
 
 ---
 
@@ -284,7 +288,7 @@ yt "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 Use `ytmp3`:
 
 ```bash
-ytmp3 dQw4w9WgXcQ
+ytmp3 xYTeFnQ_lCU
 ```
 
 The wrapper extracts the best available audio and converts it to MP3 using
@@ -674,6 +678,8 @@ Current download preferences
 The configuration prompts support normal Bash line editing, including arrow
 keys, when the wrapper is run interactively.
 
+## Reset configuration
+    yt --reset-config
 ---
 
 # 📁 Download Locations
@@ -716,6 +722,18 @@ Downloaded VTT subtitles are converted into plain text files.
 
 Transcript failure does **not** turn an otherwise successful media download
 into a failed download.
+
+### Per-command transcript overrides
+
+You can override the configured transcript setting for a single command without changing the persistent configuration:
+
+```bash
+# Enable transcripts for this command only
+./yt-dlp-wrapper --transcript VIDEO_ID
+
+# Disable transcripts for this command only
+./yt-dlp-wrapper --no-transcript VIDEO_ID
+```
 
 ---
 
@@ -896,7 +914,7 @@ yt dQw4w9WgXcQ
 ## Test MP3 extraction
 
 ```bash
-ytmp3 dQw4w9WgXcQ
+ytmp3 xYTeFnQ_lCU
 ```
 
 ## Test multiple inputs
@@ -1376,10 +1394,29 @@ This includes:
 --ignore-errors
 --show-config
 --configure
+--reset-config
+--diagnose
+--update
+--rollback
+--transcript / --no-transcript
 --help
 ```
 
 and wrapper-controlled functionality such as its batch handling.
+
+# 🔄 Wrapper Maintenance
+
+## Check wrapper health
+
+    yt --diagnose
+
+## Update the wrapper
+
+    yt --update
+
+## Roll back the wrapper
+
+    yt --rollback
 
 ---
 
