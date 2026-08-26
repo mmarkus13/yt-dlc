@@ -617,9 +617,12 @@ In particular:
 --ignore-errors
 --show-config
 --configure
+--reset-config
+--diagnose
 --help
 --batch-file
 --update
+--rollback
 ```
 
 The wrapper needs to control these behaviors itself.
