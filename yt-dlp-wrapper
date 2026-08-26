@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-
 set -u
 # ============================================================================
 # yt-dlp wrapper
@@ -12,6 +11,9 @@ set -u
 #   ytmp3 URL [URL ...]
 #       Download audio as MP3
 #
+#   yt --version
+#       Show yt-dlc version
+#
 #   yt --show-config
 #       Show current configuration
 #
@@ -22,6 +24,9 @@ set -u
 #
 #   --ignore-errors
 #       Continue downloading remaining URLs after a failure.
+#
+#   --version
+#       Show yt-dlc version.
 #
 #   --show-config
 #       Show current configuration.
@@ -58,7 +63,11 @@ set -u
 #
 #   ~/.local/bin/yt-dlp
 # ============================================================================
+# ============================================================================
+# Version
+# ============================================================================
 
+YT_DLC_VERSION="0.1.0"
 
 # ============================================================================
 # Paths
@@ -72,7 +81,6 @@ TMP_DIR="$CACHE_DIR/tmp"
 
 YT_DLP="$HOME/.local/bin/yt-dlp"
 
-
 # ============================================================================
 # Defaults
 # ============================================================================
@@ -84,7 +92,6 @@ TRANSCRIPTS="no"
 TRANSCRIPT_LANG="en"
 
 OVERWRITE="no"
-
 
 # ============================================================================
 # Runtime state
@@ -104,10 +111,14 @@ SUCCESSFUL=0
 FAILED=0
 FAILED_URLS=()
 
-
 # ============================================================================
 # Utility functions
 # ============================================================================
+
+show_version() {
+    echo "yt-dlc $YT_DLC_VERSION"
+}
+
 
 strip_quotes() {
     local value="$1"
@@ -164,7 +175,6 @@ OVERWRITE=$(printf '%q' "$OVERWRITE")
 EOF
 }
 
-
 # ============================================================================
 # Configuration display
 # ============================================================================
@@ -202,7 +212,6 @@ show_config() {
     echo
 }
 
-
 # ============================================================================
 # Help
 # ============================================================================
@@ -215,6 +224,7 @@ show_help() {
     echo
     echo "yt-dlc options:"
     echo "  --ignore-errors       Continue after failed downloads"
+    echo "  --version             Show yt-dlc version"
     echo "  --show-config         Show current configuration"
     echo "  --configure           Configure the wrapper"
     echo "  --help                Show this help"
@@ -253,7 +263,6 @@ show_help() {
     echo "  --batch-file is intentionally not supported; pass multiple URLs directly."
     echo
 }
-
 
 # ============================================================================
 # Interactive configuration
@@ -354,7 +363,6 @@ configure() {
     show_config
 }
 
-
 # ============================================================================
 # VTT -> TXT conversion
 # ============================================================================
@@ -420,7 +428,6 @@ vtt_to_txt() {
         }
     ' "$input" > "$output"
 }
-
 
 # ============================================================================
 # Select a subtitle language from yt-dlp --list-subs output
@@ -504,7 +511,6 @@ select_subtitle_language() {
     '
 }
 
-
 # ============================================================================
 # Find a VTT belonging to a specific subtitle language
 #
@@ -528,7 +534,6 @@ find_transcript_vtt() {
         head -n1 |
         cut -d' ' -f2-
 }
-
 
 # ============================================================================
 # Transcript download
@@ -703,7 +708,6 @@ download_transcript() {
     return 0
 }
 
-
 # ============================================================================
 # yt-dlp update check
 # ============================================================================
@@ -715,7 +719,6 @@ check_update() {
 
     echo
 }
-
 
 # ============================================================================
 # yt-dlp option handling
@@ -809,7 +812,6 @@ option_takes_value() {
     esac
 }
 
-
 # ============================================================================
 # Wrapper-owned options
 #
@@ -818,7 +820,7 @@ option_takes_value() {
 
 is_wrapper_option() {
     case "$1" in
-        --ignore-errors|--show-config|--configure|--help)
+        --ignore-errors|--version|--show-config|--configure|--help)
             return 0
             ;;
 
@@ -827,7 +829,6 @@ is_wrapper_option() {
             ;;
     esac
 }
-
 
 # ============================================================================
 # yt-dlp options that would conflict with wrapper-owned behavior
@@ -861,7 +862,6 @@ is_blocked_option() {
             ;;
     esac
 }
-
 
 # ============================================================================
 # Build common yt-dlp arguments
@@ -910,7 +910,6 @@ build_common_args() {
         )
     fi
 }
-
 
 # ============================================================================
 # Download one URL
@@ -996,7 +995,6 @@ download() {
     return "$status"
 }
 
-
 # ============================================================================
 # Automatic batch delay
 #
@@ -1020,7 +1018,6 @@ batch_delay() {
     sleep "$delay"
 }
 
-
 # ============================================================================
 # Determine mode
 # ============================================================================
@@ -1030,12 +1027,10 @@ if [[ "${1:-}" == "video" || "${1:-}" == "mp3" ]]; then
     shift
 fi
 
-
 if [[ "$#" -eq 0 ]]; then
     show_help
     exit 1
 fi
-
 
 # ============================================================================
 # Argument parsing
@@ -1078,6 +1073,11 @@ for arg in "$@"; do
             continue
             ;;
 
+        --version)
+            show_version
+            exit 0
+            ;;
+
         --show-config)
             load_config
             show_config
@@ -1097,7 +1097,6 @@ for arg in "$@"; do
 
     esac
 
-
     # ------------------------------------------------------------------------
     # Explicit end-of-options marker
     # ------------------------------------------------------------------------
@@ -1106,7 +1105,6 @@ for arg in "$@"; do
         USER_YTDLP_ARGS+=("$arg")
         continue
     fi
-
 
     # ------------------------------------------------------------------------
     # Bare YouTube video ID
@@ -1120,7 +1118,6 @@ for arg in "$@"; do
         URL_INPUTS+=("$arg")
         continue
     fi
-
 
     # ------------------------------------------------------------------------
     # Long-form yt-dlp option
@@ -1158,7 +1155,6 @@ for arg in "$@"; do
         continue
     fi
 
-
     # ------------------------------------------------------------------------
     # Short options are intentionally rejected.
     #
@@ -1178,7 +1174,6 @@ for arg in "$@"; do
         exit 1
     fi
 
-
     # ------------------------------------------------------------------------
     # URLs
     # ------------------------------------------------------------------------
@@ -1189,7 +1184,6 @@ for arg in "$@"; do
         URL_INPUTS+=("$arg")
         continue
     fi
-
 
     # ------------------------------------------------------------------------
     # Anything else at this point is invalid.
@@ -1205,14 +1199,12 @@ for arg in "$@"; do
 
 done
 
-
 # ============================================================================
 # Load configuration
 # ============================================================================
 
 load_config
 ensure_directories
-
 
 # ============================================================================
 # Normalize URL inputs
@@ -1257,7 +1249,6 @@ for input in "${URL_INPUTS[@]}"; do
 
 done
 
-
 # ============================================================================
 # Validate URLs
 # ============================================================================
@@ -1269,7 +1260,6 @@ if [[ "${#URLS[@]}" -eq 0 ]]; then
     show_help
     exit 1
 fi
-
 
 # ============================================================================
 # Execute batch
@@ -1313,7 +1303,6 @@ for (( INDEX=0; INDEX<TOTAL; INDEX++ )); do
     fi
 
 done
-
 
 # ============================================================================
 # Batch summary
