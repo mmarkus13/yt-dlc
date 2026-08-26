@@ -531,12 +531,34 @@ diagnose() {
     echo
 
     if (( failures == 0 )); then
+        echo "Rollback"
+        echo "--------"
+
+        if [[ -f "$PREVIOUS_WRAPPER" ]]; then
+            local rollback_version
+
+            rollback_version="$(get_wrapper_version "$PREVIOUS_WRAPPER" 2>/dev/null || true)"
+
+            if [[ -n "$rollback_version" ]]; then
+                echo "  Available:           yes"
+                echo "  Version:             $rollback_version"
+                echo "  Path:                $PREVIOUS_WRAPPER"
+            else
+                echo "  Available:           invalid"
+                echo "  Path:                $PREVIOUS_WRAPPER"
+            fi
+        else
+            echo "  Available:           no"
+            echo "  Path:                $PREVIOUS_WRAPPER"
+        fi
+
         echo "✅ Diagnostics completed successfully."
         return 0
     fi
 
     echo "❌ Diagnostics found $failures problem(s)."
     return 1
+
 }
 
 # ============================================================================
@@ -760,6 +782,224 @@ fi
 }
 
 # ============================================================================
+# Wrapper rollback
+# ============================================================================
+#
+# The rollback storage deliberately contains exactly one previous wrapper.
+#
+# Before:
+#   current  = A
+#   previous = B
+#
+# After:
+#   current  = B
+#   previous = A
+#
+# Both files are validated before either slot is modified.
+# ============================================================================
+
+get_wrapper_version() {
+    local wrapper="$1"
+
+    sed -n 's/^[[:space:]]*YT_DLC_VERSION="\([^"]*\)".*$/\1/p' \
+        "$wrapper" | head -n1
+}
+
+
+validate_wrapper_file() {
+    local wrapper="$1"
+    local version
+    local shebang
+
+    if [[ ! -f "$wrapper" ]]; then
+        echo "❌ Wrapper file does not exist:"
+        echo "   $wrapper"
+        return 1
+    fi
+
+    if [[ ! -r "$wrapper" ]]; then
+        echo "❌ Wrapper file is not readable:"
+        echo "   $wrapper"
+        return 1
+    fi
+
+    if [[ ! -s "$wrapper" ]]; then
+        echo "❌ Wrapper file is empty:"
+        echo "   $wrapper"
+        return 1
+    fi
+
+    shebang="$(head -n1 "$wrapper")"
+    if [[ "$shebang" != "#!/usr/bin/env bash" ]]; then
+        echo "❌ Wrapper has an unexpected shebang:"
+        echo "   $shebang"
+        return 1
+    fi
+
+    if ! bash -n "$wrapper" 2>/dev/null; then
+        echo "❌ Wrapper contains invalid Bash syntax:"
+        echo "   $wrapper"
+        return 1
+    fi
+
+    version="$(get_wrapper_version "$wrapper")"
+
+    if [[ -z "$version" ]]; then
+        echo "❌ Wrapper version could not be determined:"
+        echo "   $wrapper"
+        return 1
+    fi
+
+    if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        echo "❌ Wrapper has an invalid version:"
+        echo "   $version"
+        return 1
+    fi
+
+    return 0
+}
+
+
+rollback_wrapper() {
+    local current_version
+    local previous_version
+    local current_tmp
+    local previous_tmp
+
+    echo
+    echo "Wrapper rollback"
+    echo "----------------"
+
+    if [[ ! -f "$PREVIOUS_WRAPPER" ]]; then
+        echo "ℹ️ No previous wrapper is available."
+        echo
+        echo "Rollback file:"
+        echo "  $PREVIOUS_WRAPPER"
+        return 1
+    fi
+
+    echo "Installed wrapper:"
+    echo "  $WRAPPER_PATH"
+
+    echo "Previous wrapper:"
+    echo "  $PREVIOUS_WRAPPER"
+    echo
+
+    if ! validate_wrapper_file "$WRAPPER_PATH"; then
+        echo
+        echo "❌ Current wrapper cannot be safely rolled back."
+        return 1
+    fi
+
+    if ! validate_wrapper_file "$PREVIOUS_WRAPPER"; then
+        echo
+        echo "❌ Rollback cancelled because the previous wrapper is invalid."
+        return 1
+    fi
+
+    current_version="$(get_wrapper_version "$WRAPPER_PATH")"
+    previous_version="$(get_wrapper_version "$PREVIOUS_WRAPPER")"
+
+    echo "Installed version: $current_version"
+    echo "Previous version:  $previous_version"
+    echo
+
+    if [[ "$current_version" == "$previous_version" ]]; then
+        echo "⚠️ The current and previous wrappers have the same version."
+        echo
+    fi
+
+    if ! ask_yes_no "Rollback to version $previous_version?" "no"; then
+        echo
+        echo "Rollback cancelled."
+        return 0
+    fi
+
+    if [[ ! -w "$(dirname "$WRAPPER_PATH")" ]]; then
+        echo "❌ Wrapper directory is not writable:"
+        echo "   $(dirname "$WRAPPER_PATH")"
+        return 1
+    fi
+
+    if [[ ! -d "$DATA_DIR" ]]; then
+        if ! mkdir -p "$DATA_DIR"; then
+            echo "❌ Cannot create rollback directory:"
+            echo "   $DATA_DIR"
+            return 1
+        fi
+    fi
+
+    if [[ ! -w "$DATA_DIR" ]]; then
+        echo "❌ Rollback directory is not writable:"
+        echo "   $DATA_DIR"
+        return 1
+    fi
+
+    # The temporary files live in the same directories as their destinations.
+    # This makes each final mv an atomic replacement on the same filesystem.
+    current_tmp="${PREVIOUS_WRAPPER}.new"
+    previous_tmp="${WRAPPER_PATH}.new"
+
+    rm -f "$current_tmp" "$previous_tmp"
+
+    # First prepare both replacement files. No destination has been changed yet.
+    if ! cp -p "$WRAPPER_PATH" "$current_tmp"; then
+        rm -f "$current_tmp" "$previous_tmp"
+        echo
+        echo "❌ Failed to prepare the current wrapper for rollback."
+        return 1
+    fi
+
+    if ! cp -p "$PREVIOUS_WRAPPER" "$previous_tmp"; then
+        rm -f "$current_tmp" "$previous_tmp"
+        echo
+        echo "❌ Failed to prepare the previous wrapper for rollback."
+        return 1
+    fi
+
+    # Validate the copies before replacing either live file.
+    if ! validate_wrapper_file "$current_tmp"; then
+        rm -f "$current_tmp" "$previous_tmp"
+        echo
+        echo "❌ Failed to validate the rollback backup."
+        return 1
+    fi
+
+    if ! validate_wrapper_file "$previous_tmp"; then
+        rm -f "$current_tmp" "$previous_tmp"
+        echo
+        echo "❌ Failed to validate the restored wrapper."
+        return 1
+    fi
+
+    # Replace the rollback slot first, preserving the current wrapper there.
+    if ! mv -f "$current_tmp" "$PREVIOUS_WRAPPER"; then
+        rm -f "$current_tmp" "$previous_tmp"
+        echo
+        echo "❌ Failed to update the rollback slot."
+        return 1
+    fi
+
+    # Now replace the installed wrapper with the previous wrapper.
+    if ! mv -f "$previous_tmp" "$WRAPPER_PATH"; then
+        echo
+        echo "❌ Failed to install the rolled-back wrapper."
+        echo "⚠️ The previous wrapper remains available at:"
+        echo "   $PREVIOUS_WRAPPER"
+        return 1
+    fi
+
+    echo
+    echo "✅ Rollback completed successfully."
+    echo
+    echo "Installed version: $previous_version"
+    echo "Previous version:  $current_version"
+    echo
+
+    return 0
+}
+
+# ============================================================================
 # Help
 # ============================================================================
 
@@ -777,6 +1017,7 @@ show_help() {
     echo "  --reset-config        Reset configuration to defaults"
     echo "  --diagnose            Diagnose wrapper configuration and dependencies"
     echo "  --update              Check for and install a newer wrapper version"
+    echo "  --rollback            Restore the previous wrapper version"
     echo "  --transcript          Enable transcript for this command"
     echo "  --no-transcript       Disable transcript for this command"
     echo "  --help                Show this help"
@@ -1365,7 +1606,7 @@ option_takes_value() {
 is_wrapper_option() {
     case "$1" in
         --ignore-errors|--version|--show-config|--configure|--reset-config|\
-        --diagnose|--update|--transcript|--no-transcript|--help)
+        --diagnose|--update|--rollback|--transcript|--no-transcript|--help)
             return 0
             ;;
 
@@ -1392,6 +1633,10 @@ is_blocked_option() {
             ;;
 
         --update|--no-update)
+            return 0
+            ;;
+
+        --rollback)
             return 0
             ;;
 
@@ -1577,6 +1822,11 @@ fi
 
 if [[ "${1:-}" == "--update" ]]; then
     update_wrapper
+    exit $?
+fi
+
+if [[ "${1:-}" == "--rollback" ]]; then
+    rollback_wrapper
     exit $?
 fi
 
